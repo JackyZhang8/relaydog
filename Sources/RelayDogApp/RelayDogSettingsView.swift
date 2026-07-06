@@ -8,6 +8,32 @@ private let formCornerRadius: CGFloat = 8
 private let formHorizontalPadding: CGFloat = 12
 private let formVerticalPadding: CGFloat = 10
 
+enum RelayDogTheme {
+    static let brandStart = Color(red: 0.32, green: 0.42, blue: 0.98)
+    static let brandEnd = Color(red: 0.22, green: 0.66, blue: 0.96)
+    static let cardCornerRadius: CGFloat = 12
+
+    static var brandGradient: LinearGradient {
+        LinearGradient(
+            colors: [brandStart, brandEnd],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    static var windowBackdrop: some View {
+        LinearGradient(
+            colors: [brandStart.opacity(0.07), brandEnd.opacity(0.03), Color.clear],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    static var cardShadowColor: Color {
+        Color.black.opacity(0.07)
+    }
+}
+
 enum RelayDogControlMetrics {
     static let topTabHorizontalPadding: CGFloat = 18
     static let topTabVerticalPadding: CGFloat = 10
@@ -144,30 +170,47 @@ private struct RelayDogMenuFieldModifier: ViewModifier {
 }
 
 private struct RelayDogIconButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, RelayDogControlMetrics.iconButtonHorizontalPadding)
-            .padding(.vertical, RelayDogControlMetrics.iconButtonVerticalPadding)
-            .frame(
-                width: RelayDogControlMetrics.iconButtonMinSize,
-                height: RelayDogControlMetrics.iconButtonMinSize
-            )
-            .foregroundStyle(isEnabled ? Color(nsColor: .labelColor) : Color(nsColor: .disabledControlTextColor))
-            .background(
-                RoundedRectangle(cornerRadius: formCornerRadius)
-                    .fill(configuration.isPressed ? pressedBackgroundColor : Color(nsColor: .controlBackgroundColor))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: formCornerRadius)
-                    .stroke(Color(nsColor: .separatorColor).opacity(isEnabled ? 0.55 : 0.25), lineWidth: 1)
-            )
-            .relayDogClickableCursor(enabled: isEnabled)
+        IconButtonBody(configuration: configuration)
     }
 
-    private var pressedBackgroundColor: Color {
-        Color(nsColor: .selectedControlColor).opacity(0.18)
+    private struct IconButtonBody: View {
+        let configuration: Configuration
+        @Environment(\.isEnabled) private var isEnabled
+        @State private var isHovering = false
+
+        var body: some View {
+            configuration.label
+                .padding(.horizontal, RelayDogControlMetrics.iconButtonHorizontalPadding)
+                .padding(.vertical, RelayDogControlMetrics.iconButtonVerticalPadding)
+                .frame(
+                    width: RelayDogControlMetrics.iconButtonMinSize,
+                    height: RelayDogControlMetrics.iconButtonMinSize
+                )
+                .foregroundStyle(isEnabled ? Color(nsColor: .labelColor) : Color(nsColor: .disabledControlTextColor))
+                .background(
+                    RoundedRectangle(cornerRadius: formCornerRadius)
+                        .fill(backgroundColor)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: formCornerRadius)
+                        .stroke(Color(nsColor: .separatorColor).opacity(isEnabled ? 0.45 : 0.2), lineWidth: 1)
+                )
+                .onHover { hovering in
+                    isHovering = hovering
+                }
+                .relayDogClickableCursor(enabled: isEnabled)
+        }
+
+        private var backgroundColor: Color {
+            if configuration.isPressed {
+                return RelayDogTheme.brandStart.opacity(0.16)
+            }
+            if isHovering && isEnabled {
+                return RelayDogTheme.brandStart.opacity(0.08)
+            }
+            return Color(nsColor: .controlBackgroundColor)
+        }
     }
 }
 
@@ -188,13 +231,16 @@ private struct RelayDogActionButtonStyle: ButtonStyle {
             .padding(.vertical, RelayDogControlMetrics.actionButtonVerticalPadding)
             .frame(minHeight: RelayDogControlMetrics.actionButtonMinHeight)
             .foregroundStyle(foregroundColor)
-            .background(
-                RoundedRectangle(cornerRadius: formCornerRadius)
-                    .fill(backgroundColor)
-            )
+            .background(background)
             .overlay(
                 RoundedRectangle(cornerRadius: formCornerRadius)
                     .stroke(borderColor, lineWidth: 1)
+            )
+            .shadow(
+                color: prominence == .primary && isEnabled ? RelayDogTheme.brandStart.opacity(0.35) : .clear,
+                radius: 5,
+                x: 0,
+                y: 2
             )
             .opacity(isEnabled ? (configuration.isPressed ? 0.78 : 1) : 0.5)
             .relayDogClickableCursor(enabled: isEnabled)
@@ -204,18 +250,22 @@ private struct RelayDogActionButtonStyle: ButtonStyle {
         prominence == .primary && isEnabled ? .white : Color(nsColor: .labelColor)
     }
 
-    private var backgroundColor: Color {
+    @ViewBuilder
+    private var background: some View {
         if prominence == .primary && isEnabled {
-            return Color.accentColor
+            RoundedRectangle(cornerRadius: formCornerRadius)
+                .fill(RelayDogTheme.brandGradient)
+        } else {
+            RoundedRectangle(cornerRadius: formCornerRadius)
+                .fill(Color(nsColor: .controlBackgroundColor))
         }
-        return Color(nsColor: .controlBackgroundColor)
     }
 
     private var borderColor: Color {
         if prominence == .primary && isEnabled {
-            return Color.accentColor.opacity(0.85)
+            return Color.white.opacity(0.18)
         }
-        return Color(nsColor: .separatorColor).opacity(0.65)
+        return Color(nsColor: .separatorColor).opacity(0.55)
     }
 }
 
@@ -251,7 +301,10 @@ public struct RelayDogSettingsView: View {
             .padding(.bottom, 16)
         }
         .frame(minWidth: 860, minHeight: 620)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(
+            Color(nsColor: .windowBackgroundColor)
+                .overlay(RelayDogTheme.windowBackdrop)
+        )
     }
 }
 
@@ -279,27 +332,45 @@ private struct SettingsTabButton: View {
     let isSelected: Bool
     let select: () -> Void
 
+    @State private var isHovering = false
+
     var body: some View {
         Button(action: select) {
             Label(tab.localizedTitle(language: language), systemImage: tab.systemImage)
-                .font(.callout.weight(.medium))
+                .font(.callout.weight(isSelected ? .semibold : .medium))
                 .labelStyle(.titleAndIcon)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, RelayDogControlMetrics.topTabHorizontalPadding)
                 .padding(.vertical, RelayDogControlMetrics.topTabVerticalPadding)
                 .frame(maxWidth: .infinity, minHeight: RelayDogControlMetrics.topTabMinHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: formCornerRadius)
-                        .fill(isSelected ? Color.accentColor.opacity(0.14) : Color(nsColor: .controlBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: formCornerRadius)
-                        .stroke(isSelected ? Color.accentColor.opacity(0.45) : Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 1)
+                .background(background)
+                .shadow(
+                    color: isSelected ? RelayDogTheme.brandStart.opacity(0.3) : .clear,
+                    radius: 5,
+                    x: 0,
+                    y: 2
                 )
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isSelected ? Color.accentColor : Color(nsColor: .labelColor))
+        .foregroundStyle(isSelected ? Color.white : Color(nsColor: .labelColor))
+        .onHover { hovering in
+            isHovering = hovering
+        }
         .relayDogClickableCursor()
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        if isSelected {
+            Capsule()
+                .fill(RelayDogTheme.brandGradient)
+        } else if isHovering {
+            Capsule()
+                .fill(RelayDogTheme.brandStart.opacity(0.08))
+        } else {
+            Capsule()
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+        }
     }
 }
 
@@ -313,7 +384,8 @@ private struct SettingsHeaderView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("RelayDog")
-                    .font(.title3.weight(.semibold))
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(RelayDogTheme.brandGradient)
                 Text(viewModel.headerTagline)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -343,7 +415,12 @@ private struct HeaderLogo: View {
                     width: RelayDogControlMetrics.headerLogoSize,
                     height: RelayDogControlMetrics.headerLogoSize
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 11))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(RelayDogTheme.brandGradient, lineWidth: 1.5)
+                )
+                .shadow(color: RelayDogTheme.brandStart.opacity(0.25), radius: 6, x: 0, y: 3)
                 .accessibilityHidden(true)
         }
     }
@@ -686,20 +763,46 @@ private struct SettingsPanel<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: systemImage)
-                .font(.headline.weight(.semibold))
+            SettingsPanelHeader(title: title, systemImage: systemImage)
 
             content
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
+        .relayDogCard()
+    }
+}
+
+private struct SettingsPanelHeader: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(RelayDogTheme.brandGradient)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(RelayDogTheme.brandStart.opacity(0.12))
+                )
+            Text(title)
+                .font(.headline.weight(.semibold))
+        }
+    }
+}
+
+private extension View {
+    func relayDogCard() -> some View {
+        background(
+            RoundedRectangle(cornerRadius: RelayDogTheme.cardCornerRadius)
                 .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(color: RelayDogTheme.cardShadowColor, radius: 8, x: 0, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RelayDogTheme.cardCornerRadius)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.3), lineWidth: 1)
         )
     }
 }
@@ -725,8 +828,7 @@ private struct SettingsPanelWithAction<Content: View, Action: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
-                Label(title, systemImage: systemImage)
-                    .font(.headline.weight(.semibold))
+                SettingsPanelHeader(title: title, systemImage: systemImage)
                 Spacer()
                 action
             }
@@ -735,14 +837,7 @@ private struct SettingsPanelWithAction<Content: View, Action: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
-        )
+        .relayDogCard()
     }
 }
 
@@ -2281,12 +2376,21 @@ private struct EmptyStateRow: View {
     let systemImage: String
 
     var body: some View {
-        HStack(spacing: 10) {
+        VStack(spacing: 8) {
             Image(systemName: systemImage)
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(RelayDogTheme.brandStart.opacity(0.5))
             Text(title)
+                .foregroundStyle(.secondary)
         }
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, minHeight: 72, alignment: .center)
+        .frame(maxWidth: .infinity, minHeight: 88, alignment: .center)
+        .background(
+            RoundedRectangle(cornerRadius: formCornerRadius)
+                .stroke(
+                    Color(nsColor: .separatorColor).opacity(0.6),
+                    style: StrokeStyle(lineWidth: 1, dash: [5, 4])
+                )
+        )
     }
 }
 
@@ -2315,6 +2419,7 @@ private struct StatusDot: View {
         Circle()
             .fill(isOn ? Color.green : Color.secondary.opacity(0.45))
             .frame(width: 9, height: 9)
+            .shadow(color: isOn ? Color.green.opacity(0.5) : .clear, radius: 3)
     }
 }
 
@@ -2324,13 +2429,17 @@ private struct ProtocolBadge: View {
     var body: some View {
         Text(title)
             .font(.caption.weight(.semibold))
-            .padding(.horizontal, 7)
+            .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
                 Capsule()
-                    .fill(Color.accentColor.opacity(0.12))
+                    .fill(RelayDogTheme.brandStart.opacity(0.1))
             )
-            .foregroundStyle(Color.accentColor)
+            .overlay(
+                Capsule()
+                    .stroke(RelayDogTheme.brandStart.opacity(0.3), lineWidth: 1)
+            )
+            .foregroundStyle(RelayDogTheme.brandGradient)
     }
 }
 

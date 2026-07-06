@@ -18,8 +18,6 @@ public final class HealthMonitorScheduler: @unchecked Sendable {
     }
 
     public func start(config: RelayDogConfig) {
-        stop()
-
         let task = Task { [monitor, healthState, intervalSeconds] in
             while !Task.isCancelled {
                 await Self.checkAll(config: config, monitor: monitor, healthState: healthState)
@@ -28,8 +26,10 @@ public final class HealthMonitorScheduler: @unchecked Sendable {
         }
 
         lock.lock()
+        let previous = self.task
         self.task = task
         lock.unlock()
+        previous?.cancel()
     }
 
     public func stop() {
