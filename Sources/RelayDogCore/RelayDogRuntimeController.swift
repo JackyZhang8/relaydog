@@ -11,6 +11,7 @@ public final class RelayDogRuntimeController: @unchecked Sendable {
 
     private let upstreamClient: any UpstreamClient
     private let transport: ServerTransport
+    private let healthMonitorScheduler: HealthMonitorScheduler?
     private var server: RelayDogServer?
 
     public init(
@@ -20,7 +21,8 @@ public final class RelayDogRuntimeController: @unchecked Sendable {
         transport: ServerTransport = NWListenerServerTransport(),
         routingState: RoutingState = RoutingState(),
         healthState: HealthState = HealthState(),
-        statisticsStore: StatisticsStore = StatisticsStore()
+        statisticsStore: StatisticsStore = StatisticsStore(),
+        healthMonitorScheduler: HealthMonitorScheduler? = nil
     ) {
         self.config = config
         self.paths = paths
@@ -29,6 +31,15 @@ public final class RelayDogRuntimeController: @unchecked Sendable {
         self.routingState = routingState
         self.healthState = healthState
         self.statisticsStore = statisticsStore
+
+        let needsHealthChecks = config.routing.values.contains { $0.mode != .single }
+        if let healthMonitorScheduler {
+            self.healthMonitorScheduler = healthMonitorScheduler
+        } else if needsHealthChecks {
+            self.healthMonitorScheduler = HealthMonitorScheduler(healthState: healthState)
+        } else {
+            self.healthMonitorScheduler = nil
+        }
     }
 
     public func start() async throws {
@@ -56,9 +67,11 @@ public final class RelayDogRuntimeController: @unchecked Sendable {
         try await server.start()
         self.server = server
         state = server.state
+        healthMonitorScheduler?.start(config: config)
     }
 
     public func stop() async {
+        healthMonitorScheduler?.stop()
         await server?.stop()
         server = nil
         state = .stopped

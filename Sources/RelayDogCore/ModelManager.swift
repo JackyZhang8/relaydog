@@ -117,7 +117,7 @@ public struct ModelManager: Sendable {
             throw ProxyEngineError.invalidBaseURL(baseURL)
         }
 
-        let basePath = stripTrailingSlash(components.path)
+        let basePath = UpstreamURLBuilder.stripTrailingSlash(components.path)
         components.path = basePath.hasSuffix("/v1") ? basePath + "/models" : basePath + "/v1/models"
 
         guard let url = components.url else {
@@ -139,19 +139,13 @@ public struct ModelManager: Sendable {
         }
     }
 
-    private func stripTrailingSlash(_ value: String) -> String {
-        guard value.count > 1, value.hasSuffix("/") else {
-            return value
-        }
-        return String(value.dropLast())
-    }
-
     private static func effectiveMappings(
         proto: ProxyProtocol,
         capability: ProtocolCapabilityConfig,
         config: RelayDogConfig
     ) -> [String: String] {
-        capability.modelMappings
+        let global = config.globalModelMappings[proto] ?? [:]
+        return global.merging(capability.modelMappings) { _, upstreamSpecific in upstreamSpecific }
     }
 
     private static func uniqueModelIDs(from values: [Any]) -> [String] {

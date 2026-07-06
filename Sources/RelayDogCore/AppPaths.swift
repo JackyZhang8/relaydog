@@ -19,10 +19,6 @@ public struct AppPaths: Equatable, Sendable {
         dataDirectory.appendingPathComponent("logs", isDirectory: true)
     }
 
-    public var stateFile: URL {
-        dataDirectory.appendingPathComponent("state.json")
-    }
-
     public func createDirectories(fileManager: FileManager = .default) throws {
         try fileManager.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: logsDirectory, withIntermediateDirectories: true)

@@ -43,7 +43,7 @@ public enum UpstreamSelector {
         return candidates[0]
     }
 
-    private static func enabledCandidates(for proto: ProxyProtocol, in config: RelayDogConfig) -> [SelectedUpstream] {
+    static func enabledCandidates(for proto: ProxyProtocol, in config: RelayDogConfig) -> [SelectedUpstream] {
         config.upstreams.compactMap { upstream in
             guard upstream.enabled, let capability = upstream.protocols[proto], capability.enabled else {
                 return nil

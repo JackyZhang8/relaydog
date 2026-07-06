@@ -62,10 +62,17 @@ public protocol ProxyEventLogging: Sendable {
 public struct RequestLogEventLogger: ProxyEventLogging {
     private let store: RequestLogStore
     private let recordResponseBody: Bool
+    private let queue: DispatchQueue
 
     public init(store: RequestLogStore, recordResponseBody: Bool) {
         self.store = store
         self.recordResponseBody = recordResponseBody
+        self.queue = DispatchQueue(label: "relaydog.request-log", qos: .utility)
+    }
+
+    /// Blocks until all queued log writes have been flushed. Intended for tests and shutdown.
+    public func waitUntilDrained() {
+        queue.sync {}
     }
 
     public func record(_ event: ProxyEvent) async {
@@ -88,6 +95,8 @@ public struct RequestLogEventLogger: ProxyEventLogging {
             error: event.error
         )
 
-        try? store.append(record)
+        queue.async { [store] in
+            try? store.append(record)
+        }
     }
 }

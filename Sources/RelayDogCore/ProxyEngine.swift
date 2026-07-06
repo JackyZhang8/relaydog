@@ -8,6 +8,29 @@ public struct ProxyEngine: Sendable {
     public var healthState: HealthState
     public var statisticsStore: StatisticsStore?
 
+    static let maxLoggedResponseBodyBytes = 10 * 1024 * 1024
+
+    private static let strippedForwardedHeaders: Set<String> = [
+        "host",
+        "content-length",
+        "transfer-encoding",
+        "accept-encoding",
+        "connection",
+        "keep-alive",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "upgrade"
+    ]
+
+    private static let redactedHeaderNames: Set<String> = [
+        "authorization",
+        "proxy-authorization",
+        "x-api-key",
+        "cookie",
+        "set-cookie"
+    ]
+
     public init(
         config: RelayDogConfig,
         upstreamClient: any UpstreamClient,
@@ -25,50 +48,135 @@ public struct ProxyEngine: Sendable {
     }
 
     public func handle(_ request: ProxyHTTPRequest) async throws -> ProxyHTTPResponse {
+        if isStatusRequest(request) {
+            return statusResponse()
+        }
+
+        switch prepareForwarding(request) {
+        case .respond(let response):
+            return response
+        case .forward(let context):
+            let started = Date()
+            do {
+                let response = try await upstreamClient.send(context.forwarded)
+                recordStatistic(proto: context.proto, upstreamID: context.forwarded.upstreamID, response: response, started: started, error: nil)
+                await recordEvent(localRequest: request, forwarded: context.forwarded, proto: context.proto, response: response, started: started, error: nil)
+                return response
+            } catch {
+                recordStatistic(proto: context.proto, upstreamID: context.forwarded.upstreamID, response: nil, started: started, error: error)
+                await recordEvent(localRequest: request, forwarded: context.forwarded, proto: context.proto, response: nil, started: started, error: String(describing: error))
+                return errorResponse(statusCode: 502, message: "Upstream request failed: \(String(describing: error))")
+            }
+        }
+    }
+
+    public func handleStream(_ request: ProxyHTTPRequest, write: @Sendable (Data) async -> Void) async {
+        if isStatusRequest(request) {
+            await write(HTTPMessageCodec.encodeResponse(statusResponse()))
+            return
+        }
+
+        let context: ForwardingContext
+        switch prepareForwarding(request) {
+        case .respond(let response):
+            await write(HTTPMessageCodec.encodeResponse(response))
+            return
+        case .forward(let prepared):
+            context = prepared
+        }
+
+        let started = Date()
+        let streaming: UpstreamStreamingResponse
+        do {
+            streaming = try await upstreamClient.stream(context.forwarded)
+        } catch {
+            recordStatistic(proto: context.proto, upstreamID: context.forwarded.upstreamID, response: nil, started: started, error: error)
+            await recordEvent(localRequest: request, forwarded: context.forwarded, proto: context.proto, response: nil, started: started, error: String(describing: error))
+            await write(HTTPMessageCodec.encodeResponse(errorResponse(statusCode: 502, message: "Upstream request failed: \(String(describing: error))")))
+            return
+        }
+
+        await write(HTTPMessageCodec.encodeResponseHead(statusCode: streaming.statusCode, headers: streaming.headers))
+
+        var collectedBody = Data()
+        var streamError: String?
+        do {
+            for try await chunk in streaming.body {
+                await write(chunk)
+                if collectedBody.count < Self.maxLoggedResponseBodyBytes {
+                    collectedBody.append(chunk)
+                }
+            }
+        } catch {
+            streamError = String(describing: error)
+        }
+
+        let response = ProxyHTTPResponse(statusCode: streaming.statusCode, headers: streaming.headers, body: collectedBody)
+        recordStatistic(
+            proto: context.proto,
+            upstreamID: context.forwarded.upstreamID,
+            response: streamError == nil ? response : nil,
+            started: started,
+            error: streamError.map { _ in URLError(.networkConnectionLost) }
+        )
+        await recordEvent(
+            localRequest: request,
+            forwarded: context.forwarded,
+            proto: context.proto,
+            response: response,
+            started: started,
+            error: streamError
+        )
+    }
+
+    private struct ForwardingContext {
+        var proto: ProxyProtocol
+        var forwarded: ForwardedHTTPRequest
+    }
+
+    private enum ForwardingPreparation {
+        case forward(ForwardingContext)
+        case respond(ProxyHTTPResponse)
+    }
+
+    private func prepareForwarding(_ request: ProxyHTTPRequest) -> ForwardingPreparation {
         let detection = ProtocolDetector.detect(path: request.path, headers: request.headers)
 
         guard let proto = detection.protocol else {
-            return errorResponse(statusCode: 400, message: detection.reason)
+            return .respond(errorResponse(statusCode: 400, message: detection.reason))
         }
 
         let selected: SelectedUpstream
         do {
             selected = try routingState.select(protocol: proto, from: config, health: healthState)
         } catch let error as UpstreamSelectionError {
-            return errorResponse(statusCode: 503, message: error.errorDescription ?? "No enabled upstream")
+            return .respond(errorResponse(statusCode: 503, message: error.errorDescription ?? "No enabled upstream"))
+        } catch {
+            return .respond(errorResponse(statusCode: 503, message: String(describing: error)))
         }
-
-        let started = Date()
-        let forwarded = try buildForwardedRequest(
-            localRequest: request,
-            proto: proto,
-            selected: selected
-        )
 
         do {
-            let response = try await upstreamClient.send(forwarded)
-            recordStatistic(proto: proto, upstreamID: forwarded.upstreamID, response: response, started: started, error: nil)
-            await recordEvent(
-                localRequest: request,
-                forwarded: forwarded,
-                proto: proto,
-                response: response,
-                started: started,
-                error: nil
-            )
-            return response
+            let forwarded = try buildForwardedRequest(localRequest: request, proto: proto, selected: selected)
+            return .forward(ForwardingContext(proto: proto, forwarded: forwarded))
         } catch {
-            recordStatistic(proto: proto, upstreamID: forwarded.upstreamID, response: nil, started: started, error: error)
-            await recordEvent(
-                localRequest: request,
-                forwarded: forwarded,
-                proto: proto,
-                response: nil,
-                started: started,
-                error: String(describing: error)
-            )
-            throw error
+            return .respond(errorResponse(statusCode: 502, message: String(describing: error)))
         }
+    }
+
+    private func isStatusRequest(_ request: ProxyHTTPRequest) -> Bool {
+        guard request.method == "GET" || request.method == "HEAD" else {
+            return false
+        }
+        let path = UpstreamURLBuilder.splitPathAndQuery(request.path).path
+        return path == "/" || path == "/health"
+    }
+
+    private func statusResponse() -> ProxyHTTPResponse {
+        let body = (try? JSONSerialization.data(
+            withJSONObject: ["service": "relaydog", "status": "ok"],
+            options: [.sortedKeys]
+        )) ?? Data()
+        return ProxyHTTPResponse(statusCode: 200, headers: ["content-type": "application/json"], body: body)
     }
 
     private func buildForwardedRequest(
@@ -76,33 +184,25 @@ public struct ProxyEngine: Sendable {
         proto: ProxyProtocol,
         selected: SelectedUpstream
     ) throws -> ForwardedHTTPRequest {
-        let modelRewrite: ModelRewriteResult?
-        let body: Data
-
-        if proto == .openAI {
-            let mappings = effectiveMappings(proto: proto, capability: selected.capability)
-            let rewrite = try ModelMapper.rewriteRequestBody(localRequest.body, mappings: mappings)
-            modelRewrite = rewrite.originalModel == nil && rewrite.mappedModel == nil ? nil : rewrite
-            body = rewrite.body
-        } else {
-            modelRewrite = nil
-            body = localRequest.body
-        }
+        let mappings = effectiveMappings(proto: proto, capability: selected.capability)
+        let rewrite = try ModelMapper.rewriteRequestBody(localRequest.body, mappings: mappings)
+        let modelRewrite = rewrite.originalModel == nil && rewrite.mappedModel == nil ? nil : rewrite
 
         return ForwardedHTTPRequest(
             protocol: proto,
             upstreamID: selected.upstream.id,
             method: localRequest.method,
-            url: try buildUpstreamURL(baseURL: selected.capability.baseURL, requestPath: localRequest.path),
+            url: try UpstreamURLBuilder.url(baseURL: selected.capability.baseURL, requestPath: localRequest.path),
             headers: buildHeaders(from: localRequest.headers, proto: proto, capability: selected.capability),
-            body: body,
+            body: rewrite.body,
             timeoutSeconds: selected.upstream.timeoutSeconds,
             modelRewrite: modelRewrite
         )
     }
 
     private func effectiveMappings(proto: ProxyProtocol, capability: ProtocolCapabilityConfig) -> [String: String] {
-        capability.modelMappings
+        let global = config.globalModelMappings[proto] ?? [:]
+        return global.merging(capability.modelMappings) { _, upstreamSpecific in upstreamSpecific }
     }
 
     private func buildHeaders(
@@ -111,8 +211,7 @@ public struct ProxyEngine: Sendable {
         capability: ProtocolCapabilityConfig
     ) -> [String: String] {
         var headers = originalHeaders.filter { key, _ in
-            let lowercased = key.lowercased()
-            return lowercased != "host" && lowercased != "content-length"
+            !Self.strippedForwardedHeaders.contains(key.lowercased())
         }
 
         switch proto {
@@ -137,64 +236,6 @@ public struct ProxyEngine: Sendable {
         headers[name] = value
     }
 
-    private func buildUpstreamURL(baseURL: String, requestPath: String) throws -> URL {
-        guard var components = URLComponents(string: baseURL) else {
-            throw ProxyEngineError.invalidBaseURL(baseURL)
-        }
-
-        let split = splitPathAndQuery(requestPath)
-        let basePath = stripTrailingSlash(components.path)
-        let pathToAppend = stripLocalVersionPrefixIfNeeded(basePath: basePath, requestPath: split.path)
-        components.path = joinPath(basePath, pathToAppend)
-        components.percentEncodedQuery = split.query
-
-        guard let url = components.url else {
-            throw ProxyEngineError.invalidBaseURL(baseURL)
-        }
-        return url
-    }
-
-    private func splitPathAndQuery(_ path: String) -> (path: String, query: String?) {
-        guard let question = path.firstIndex(of: "?") else {
-            return (path, nil)
-        }
-        return (String(path[..<question]), String(path[path.index(after: question)...]))
-    }
-
-    private func stripLocalVersionPrefixIfNeeded(basePath: String, requestPath: String) -> String {
-        if basePath.hasSuffix("/v1"), requestPath == "/v1" {
-            return ""
-        }
-
-        if basePath.hasSuffix("/v1"), requestPath.hasPrefix("/v1/") {
-            return String(requestPath.dropFirst("/v1".count))
-        }
-
-        return requestPath
-    }
-
-    private func joinPath(_ basePath: String, _ requestPath: String) -> String {
-        let trimmedBase = stripTrailingSlash(basePath)
-        let trimmedRequest = requestPath.hasPrefix("/") ? String(requestPath.dropFirst()) : requestPath
-
-        if trimmedBase.isEmpty {
-            return "/" + trimmedRequest
-        }
-
-        if trimmedRequest.isEmpty {
-            return trimmedBase
-        }
-
-        return trimmedBase + "/" + trimmedRequest
-    }
-
-    private func stripTrailingSlash(_ value: String) -> String {
-        guard value.count > 1, value.hasSuffix("/") else {
-            return value
-        }
-        return String(value.dropLast())
-    }
-
     private func errorResponse(statusCode: Int, message: String) -> ProxyHTTPResponse {
         let body = (try? JSONSerialization.data(withJSONObject: ["error": message], options: [.sortedKeys])) ?? Data()
         return ProxyHTTPResponse(
@@ -202,6 +243,23 @@ public struct ProxyEngine: Sendable {
             headers: ["content-type": "application/json"],
             body: body
         )
+    }
+
+    static func redactedHeaders(_ headers: [String: String]) -> [String: String] {
+        headers.reduce(into: [:]) { result, entry in
+            if redactedHeaderNames.contains(entry.key.lowercased()) {
+                result[entry.key] = redactedValue(entry.value)
+            } else {
+                result[entry.key] = entry.value
+            }
+        }
+    }
+
+    private static func redactedValue(_ value: String) -> String {
+        if value.lowercased().hasPrefix("bearer ") {
+            return "Bearer ***"
+        }
+        return "***"
     }
 
     private func recordEvent(
@@ -224,7 +282,7 @@ public struct ProxyEngine: Sendable {
             path: localRequest.path,
             upstreamID: forwarded.upstreamID,
             upstreamURL: forwarded.url.absoluteString,
-            requestHeaders: forwarded.headers,
+            requestHeaders: Self.redactedHeaders(forwarded.headers),
             requestBody: String(decoding: forwarded.body, as: UTF8.self),
             originalModel: forwarded.modelRewrite?.originalModel,
             mappedModel: forwarded.modelRewrite?.mappedModel,

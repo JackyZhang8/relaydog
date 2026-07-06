@@ -104,11 +104,6 @@ public final class RoutingState: @unchecked Sendable {
     }
 
     private func enabledCandidates(for proto: ProxyProtocol, in config: RelayDogConfig) -> [SelectedUpstream] {
-        config.upstreams.compactMap { upstream in
-            guard upstream.enabled, let capability = upstream.protocols[proto], capability.enabled else {
-                return nil
-            }
-            return SelectedUpstream(upstream: upstream, capability: capability)
-        }
+        UpstreamSelector.enabledCandidates(for: proto, in: config)
     }
 }

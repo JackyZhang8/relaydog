@@ -72,10 +72,10 @@ final class ProxyEngineTests: XCTestCase {
         XCTAssertNil(forwarded.headers["authorization"])
     }
 
-    func testGlobalModelMappingsDoNotRewriteRequests() async throws {
+    func testGlobalModelMappingsApplyWhenUpstreamHasNoOverride() async throws {
         var config = TestConfigs.proxyEngineConfig()
         config.upstreams[0].protocols[.openAI]?.modelMappings = [:]
-        config.globalModelMappings[.openAI] = ["gpt-5.5": "hidden-global-model"]
+        config.globalModelMappings[.openAI] = ["gpt-5.5": "global-model"]
         let client = RecordingUpstreamClient(response: .init(statusCode: 200, headers: [:], body: Data()))
         let engine = ProxyEngine(config: config, upstreamClient: client)
 
@@ -88,9 +88,135 @@ final class ProxyEngineTests: XCTestCase {
 
         let forwarded = try XCTUnwrap(client.requests.first)
         let forwardedJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: forwarded.body) as? [String: Any])
-        XCTAssertEqual(forwardedJSON["model"] as? String, "gpt-5.5")
+        XCTAssertEqual(forwardedJSON["model"] as? String, "global-model")
         XCTAssertEqual(forwarded.modelRewrite?.originalModel, "gpt-5.5")
-        XCTAssertNil(forwarded.modelRewrite?.mappedModel)
+        XCTAssertEqual(forwarded.modelRewrite?.mappedModel, "global-model")
+    }
+
+    func testUpstreamSpecificMappingOverridesGlobalMapping() async throws {
+        let client = RecordingUpstreamClient(response: .init(statusCode: 200, headers: [:], body: Data()))
+        let engine = ProxyEngine(config: TestConfigs.proxyEngineConfig(), upstreamClient: client)
+
+        _ = try await engine.handle(.init(
+            method: "POST",
+            path: "/v1/responses",
+            headers: [:],
+            body: Data(#"{"model":"gpt-5.5"}"#.utf8)
+        ))
+
+        let forwarded = try XCTUnwrap(client.requests.first)
+        let forwardedJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: forwarded.body) as? [String: Any])
+        XCTAssertEqual(forwardedJSON["model"] as? String, "glm5.2")
+    }
+
+    func testUpstreamErrorReturnsBadGatewayResponse() async throws {
+        let client = FailingUpstreamClient()
+        let engine = ProxyEngine(config: TestConfigs.proxyEngineConfig(), upstreamClient: client)
+
+        let response = try await engine.handle(.init(
+            method: "POST",
+            path: "/v1/responses",
+            headers: [:],
+            body: Data(#"{"model":"gpt-5.5"}"#.utf8)
+        ))
+
+        XCTAssertEqual(response.statusCode, 502)
+        XCTAssertTrue(String(decoding: response.body, as: UTF8.self).contains("Upstream request failed"))
+    }
+
+    func testRootPathReturnsStatusWithoutCallingUpstream() async throws {
+        let client = RecordingUpstreamClient(response: .init(statusCode: 200, headers: [:], body: Data()))
+        let engine = ProxyEngine(config: TestConfigs.proxyEngineConfig(), upstreamClient: client)
+
+        let response = try await engine.handle(.init(method: "GET", path: "/", headers: [:], body: Data()))
+
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertTrue(String(decoding: response.body, as: UTF8.self).contains("relaydog"))
+        XCTAssertTrue(client.requests.isEmpty)
+    }
+
+    func testHandleStreamWritesHeadAndBodyChunks() async throws {
+        let client = StreamingStubUpstreamClient(
+            statusCode: 200,
+            headers: ["content-type": "text/event-stream"],
+            chunks: [Data("data: one\n\n".utf8), Data("data: two\n\n".utf8)]
+        )
+        let engine = ProxyEngine(config: TestConfigs.proxyEngineConfig(), upstreamClient: client)
+        let collector = WriteCollector()
+
+        await engine.handleStream(
+            .init(method: "POST", path: "/v1/responses", headers: [:], body: Data(#"{"model":"gpt-5.5","stream":true}"#.utf8))
+        ) { chunk in
+            await collector.append(chunk)
+        }
+
+        let written = await collector.chunks
+        XCTAssertEqual(written.count, 3)
+        let head = String(decoding: written[0], as: UTF8.self)
+        XCTAssertTrue(head.hasPrefix("HTTP/1.1 200 OK\r\n"))
+        XCTAssertTrue(head.contains("content-type: text/event-stream\r\n"))
+        XCTAssertTrue(head.contains("Connection: close\r\n"))
+        XCTAssertEqual(written[1], Data("data: one\n\n".utf8))
+        XCTAssertEqual(written[2], Data("data: two\n\n".utf8))
+    }
+
+    func testRedactsSensitiveHeaders() {
+        let redacted = ProxyEngine.redactedHeaders([
+            "Authorization": "Bearer sk-secret",
+            "x-api-key": "sk-secret",
+            "Cookie": "session=abc",
+            "content-type": "application/json"
+        ])
+
+        XCTAssertEqual(redacted["Authorization"], "Bearer ***")
+        XCTAssertEqual(redacted["x-api-key"], "***")
+        XCTAssertEqual(redacted["Cookie"], "***")
+        XCTAssertEqual(redacted["content-type"], "application/json")
+    }
+}
+
+actor WriteCollector {
+    private(set) var chunks: [Data] = []
+
+    func append(_ chunk: Data) {
+        chunks.append(chunk)
+    }
+}
+
+final class StreamingStubUpstreamClient: UpstreamClient, @unchecked Sendable {
+    private let statusCode: Int
+    private let headers: [String: String]
+    private let chunks: [Data]
+
+    init(statusCode: Int, headers: [String: String], chunks: [Data]) {
+        self.statusCode = statusCode
+        self.headers = headers
+        self.chunks = chunks
+    }
+
+    func send(_ request: ForwardedHTTPRequest) async throws -> ProxyHTTPResponse {
+        ProxyHTTPResponse(statusCode: statusCode, headers: headers, body: chunks.reduce(Data(), +))
+    }
+
+    func stream(_ request: ForwardedHTTPRequest) async throws -> UpstreamStreamingResponse {
+        UpstreamStreamingResponse(
+            statusCode: statusCode,
+            headers: headers,
+            body: AsyncThrowingStream { continuation in
+                for chunk in chunks {
+                    continuation.yield(chunk)
+                }
+                continuation.finish()
+            }
+        )
+    }
+}
+
+private struct FailingUpstreamClient: UpstreamClient {
+    struct StubError: Error {}
+
+    func send(_ request: ForwardedHTTPRequest) async throws -> ProxyHTTPResponse {
+        throw StubError()
     }
 }
 
@@ -112,7 +238,27 @@ extension ProxyEngineTests {
         XCTAssertEqual(forwarded.upstreamID, "dual")
         XCTAssertEqual(forwarded.url.absoluteString, "https://example.com/anthropic/v1/messages")
         XCTAssertEqual(forwarded.headers["x-api-key"], "claude-plain-text")
-        XCTAssertNil(forwarded.modelRewrite)
+        XCTAssertEqual(forwarded.modelRewrite?.originalModel, "claude-sonnet-4-5")
+        XCTAssertNil(forwarded.modelRewrite?.mappedModel)
+    }
+
+    func testClaudeRequestAppliesModelMappings() async throws {
+        var config = TestConfigs.proxyEngineConfig()
+        config.upstreams[1].protocols[.claude]?.modelMappings = ["claude-sonnet-4-5": "upstream-claude"]
+        let client = RecordingUpstreamClient(response: .init(statusCode: 200, headers: [:], body: Data()))
+        let engine = ProxyEngine(config: config, upstreamClient: client)
+
+        _ = try await engine.handle(.init(
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["anthropic-version": "2023-06-01"],
+            body: Data(#"{"model":"claude-sonnet-4-5"}"#.utf8)
+        ))
+
+        let forwarded = try XCTUnwrap(client.requests.first)
+        let forwardedJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: forwarded.body) as? [String: Any])
+        XCTAssertEqual(forwardedJSON["model"] as? String, "upstream-claude")
+        XCTAssertEqual(forwarded.modelRewrite?.mappedModel, "upstream-claude")
     }
 
     func testUnknownProtocolReturnsBadRequestWithoutCallingUpstream() async throws {

@@ -41,7 +41,11 @@ private final class RuntimeControllerRecordingServerTransport: ServerTransport, 
     var startedHost: String?
     var startedPort: Int?
 
-    func start(host: String, port: Int, handler: @escaping @Sendable (Data) async throws -> Data) async throws {
+    func start(
+        host: String,
+        port: Int,
+        handler: @escaping @Sendable (Data, @escaping RawResponseWriter) async -> Void
+    ) async throws {
         startedHost = host
         startedPort = port
     }
