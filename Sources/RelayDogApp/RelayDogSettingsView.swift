@@ -416,10 +416,6 @@ private struct HeaderLogo: View {
                     height: RelayDogControlMetrics.headerLogoSize
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 11))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 11)
-                        .stroke(RelayDogTheme.brandGradient, lineWidth: 1.5)
-                )
                 .shadow(color: RelayDogTheme.brandStart.opacity(0.25), radius: 6, x: 0, y: 3)
                 .accessibilityHidden(true)
         }
@@ -482,50 +478,131 @@ private struct OverviewSettingsPage: View {
 private struct AboutSettingsPage: View {
     let viewModel: RelayDogSettingsViewModel
 
+    private static let featureIcons = [
+        "link.circle.fill",
+        "arrow.triangle.branch",
+        "square.grid.2x2.fill",
+        "doc.text.magnifyingglass"
+    ]
+
+    private static let featureColors: [Color] = [
+        RelayDogTheme.brandStart,
+        .orange,
+        .purple,
+        .teal
+    ]
+
     var body: some View {
         let details = viewModel.aboutDetails
 
         VStack(alignment: .leading, spacing: 16) {
-            SettingsPanel(details.title, systemImage: "info.circle") {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(details.description)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            aboutHero(details)
 
-                    Divider()
-
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], alignment: .leading, spacing: 10) {
-                        ForEach(details.featureTitles, id: \.self) { title in
-                            HStack(spacing: 8) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                                Text(title)
-                                    .font(.callout.weight(.medium))
-                                    .lineLimit(2)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(FormFieldBackground())
-                        }
+            SettingsPanel(viewModel.text("核心能力", "Highlights"), systemImage: "sparkles") {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], alignment: .leading, spacing: 10) {
+                    ForEach(Array(details.featureTitles.enumerated()), id: \.element) { index, title in
+                        FeatureTile(
+                            title: title,
+                            systemImage: Self.featureIcons[index % Self.featureIcons.count],
+                            color: Self.featureColors[index % Self.featureColors.count]
+                        )
                     }
                 }
             }
 
             SettingsPanel(viewModel.text("项目", "Project"), systemImage: "curlybraces") {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(details.storageNote)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Divider()
+                    StorageNoteCallout(text: details.storageNote)
 
                     OpenURLRow(title: "GitHub", value: "https://github.com/JackyZhang8/relaydog", url: URL(string: "https://github.com/JackyZhang8/relaydog")!)
                 }
             }
         }
+    }
+
+    private func aboutHero(_ details: RelayDogSettingsAboutDetails) -> some View {
+        VStack(spacing: 10) {
+            if let image = RelayDogBrandAssets.logoImage {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(color: RelayDogTheme.brandStart.opacity(0.3), radius: 10, x: 0, y: 4)
+            }
+
+            Text(details.title)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(RelayDogTheme.brandGradient)
+
+            Text(viewModel.headerTagline)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            Text(details.description)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 560)
+                .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 26)
+        .padding(.horizontal, 20)
+        .relayDogCard()
+    }
+}
+
+private struct FeatureTile: View {
+    let title: String
+    let systemImage: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 30, height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(color.opacity(0.12))
+                )
+            Text(title)
+                .font(.callout.weight(.medium))
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(FormFieldBackground())
+    }
+}
+
+private struct StorageNoteCallout: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .padding(.top, 1)
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: formCornerRadius)
+                .fill(Color.orange.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: formCornerRadius)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
     }
 }
 
@@ -1888,14 +1965,11 @@ private struct UpstreamTestSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(t("测试中转站", "Test Upstream", language: language))
-                        .font(.title3.weight(.semibold))
-                    Text(upstream.name)
-                        .foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 10) {
+                Text(t("测试中转站", "Test Upstream", language: language))
+                    .font(.title3.weight(.semibold))
+                ProtocolBadge(title: upstream.name)
                 Spacer()
                 Button {
                     dismiss()
@@ -1908,54 +1982,60 @@ private struct UpstreamTestSheet: View {
                 .accessibilityLabel(t("关闭", "Close", language: language))
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                FormPickerRow(title: t("协议", "Protocol", language: language), selection: $selectedProtocol) {
-                    ForEach(availableProtocols, id: \.self) { proto in
-                        Text(proto.displayName).tag(proto)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    CompactLabeledField(title: t("协议", "Protocol", language: language)) {
+                        Picker("", selection: $selectedProtocol) {
+                            ForEach(availableProtocols, id: \.self) { proto in
+                                Text(proto.displayName).tag(proto)
+                            }
+                        }
+                        .relayDogMenuField()
+                        .disabled(availableProtocols.count <= 1)
                     }
-                }
-                .disabled(availableProtocols.count <= 1)
+                    .frame(width: 200)
 
-                if selectedModels.isEmpty {
-                    FormTextRow(title: t("模型", "Model", language: language), text: $selectedModel, prompt: t("填写模型名称", "Enter model name", language: language))
-                } else {
-                    FormPickerRow(title: t("模型", "Model", language: language), selection: $selectedModel) {
-                        ForEach(selectedModels, id: \.self) { model in
-                            Text(model).tag(model)
+                    CompactLabeledField(title: t("模型", "Model", language: language)) {
+                        if selectedModels.isEmpty {
+                            TextField(t("填写模型名称", "Enter model name", language: language), text: $selectedModel)
+                                .textFieldStyle(.plain)
+                                .relayDogTextFieldFrame()
+                        } else {
+                            Picker("", selection: $selectedModel) {
+                                ForEach(selectedModels, id: \.self) { model in
+                                    Text(model).tag(model)
+                                }
+                            }
+                            .relayDogMenuField()
                         }
                     }
                 }
 
-                HStack(alignment: .top, spacing: 12) {
-                    Text(t("输入", "Input", language: language))
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: formLabelWidth, alignment: .leading)
-                        .padding(.top, 10)
-                    TextEditor(text: $prompt)
-                        .font(.body)
-                        .frame(
-                            minHeight: RelayDogControlMetrics.upstreamTestPromptMinHeight,
-                            maxHeight: RelayDogControlMetrics.upstreamTestPromptMaxHeight
-                        )
-                        .scrollContentBackground(.hidden)
-                        .padding(8)
-                        .background(FormFieldBackground())
-                }
-                .padding(.vertical, 6)
-            }
+                CompactLabeledField(title: t("输入", "Input", language: language)) {
+                    HStack(alignment: .bottom, spacing: 10) {
+                        TextEditor(text: $prompt)
+                            .font(.body)
+                            .frame(
+                                minHeight: RelayDogControlMetrics.upstreamTestPromptMinHeight,
+                                maxHeight: RelayDogControlMetrics.upstreamTestPromptMaxHeight
+                            )
+                            .scrollContentBackground(.hidden)
+                            .padding(8)
+                            .background(FormFieldBackground())
 
-            HStack {
-                Spacer()
-                Button {
-                    send()
-                } label: {
-                    Label(isRunning ? t("发送中", "Sending", language: language) : t("发送测试", "Send Test", language: language), systemImage: "paperplane.fill")
+                        Button {
+                            send()
+                        } label: {
+                            Label(isRunning ? t("发送中", "Sending", language: language) : t("发送测试", "Send Test", language: language), systemImage: "paperplane.fill")
+                        }
+                        .relayDogPrimaryButton()
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(isRunning || selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
                 }
-                .relayDogPrimaryButton()
-                .keyboardShortcut(.defaultAction)
-                .disabled(isRunning || selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            .padding(14)
+            .relayDogCard()
 
             if let errorText {
                 Text(errorText)
@@ -1965,9 +2045,20 @@ private struct UpstreamTestSheet: View {
             }
 
             HStack(alignment: .top, spacing: 12) {
-                DebugTextBox(title: t("请求", "Request", language: language), text: requestText)
-                DebugTextBox(title: t("响应", "Response", language: language), text: responseText)
+                DebugTextBox(
+                    title: t("请求", "Request", language: language),
+                    systemImage: "arrow.up.circle.fill",
+                    accent: RelayDogTheme.brandStart,
+                    text: requestText
+                )
+                DebugTextBox(
+                    title: t("响应", "Response", language: language),
+                    systemImage: "arrow.down.circle.fill",
+                    accent: .green,
+                    text: responseText
+                )
             }
+            .frame(maxHeight: .infinity)
         }
         .padding(20)
         .frame(width: 780, height: 620)
@@ -2199,37 +2290,60 @@ private struct ModelListView: View {
     }
 }
 
-private struct DebugTextBox: View {
+private struct CompactLabeledField<Content: View>: View {
     let title: String
-    let text: String
-    private let terminalBackground = Color(red: 0.045, green: 0.052, blue: 0.064)
-    private let terminalBorder = Color.white.opacity(0.14)
+    @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct DebugTextBox: View {
+    let title: String
+    let systemImage: String
+    let accent: Color
+    let text: String
+    private let terminalBackground = Color(red: 0.045, green: 0.052, blue: 0.064)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.semibold))
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                Spacer()
+            }
+            .foregroundStyle(accent)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(accent.opacity(0.12))
+
             ScrollView {
                 Text(text.isEmpty ? "-" : text)
                     .font(.caption.monospaced())
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.white.opacity(0.92))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(10)
             }
             .scrollContentBackground(.hidden)
-            .frame(height: RelayDogControlMetrics.upstreamTestDebugTextHeight)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(terminalBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(terminalBorder, lineWidth: 1)
-            )
+            .frame(minHeight: RelayDogControlMetrics.upstreamTestDebugTextHeight, maxHeight: .infinity)
+            .background(terminalBackground)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(accent.opacity(0.35), lineWidth: 1)
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
