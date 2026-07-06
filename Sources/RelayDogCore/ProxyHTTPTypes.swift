@@ -57,6 +57,35 @@ public struct ProxyHTTPResponse: Equatable, Sendable {
     }
 }
 
+public struct UpstreamStreamingResponse: Sendable {
+    public var statusCode: Int
+    public var headers: [String: String]
+    public var body: AsyncThrowingStream<Data, Error>
+
+    public init(statusCode: Int, headers: [String: String], body: AsyncThrowingStream<Data, Error>) {
+        self.statusCode = statusCode
+        self.headers = headers
+        self.body = body
+    }
+}
+
 public protocol UpstreamClient: Sendable {
     func send(_ request: ForwardedHTTPRequest) async throws -> ProxyHTTPResponse
+    func stream(_ request: ForwardedHTTPRequest) async throws -> UpstreamStreamingResponse
+}
+
+public extension UpstreamClient {
+    func stream(_ request: ForwardedHTTPRequest) async throws -> UpstreamStreamingResponse {
+        let response = try await send(request)
+        return UpstreamStreamingResponse(
+            statusCode: response.statusCode,
+            headers: response.headers,
+            body: AsyncThrowingStream { continuation in
+                if !response.body.isEmpty {
+                    continuation.yield(response.body)
+                }
+                continuation.finish()
+            }
+        )
+    }
 }

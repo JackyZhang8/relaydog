@@ -47,7 +47,7 @@ final class RelayDogServerTests: XCTestCase {
         let listener = FakeNWListener(startState: .ready)
         let transport = NWListenerServerTransport(listenerFactory: { _ in listener })
 
-        try await transport.start(host: "127.0.0.1", port: 18787) { _ in Data() }
+        try await transport.start(host: "127.0.0.1", port: 18787) { _, _ in }
 
         XCTAssertEqual(listener.startCount, 1)
         XCTAssertFalse(listener.didCancel)
@@ -58,7 +58,7 @@ final class RelayDogServerTests: XCTestCase {
         let transport = NWListenerServerTransport(listenerFactory: { _ in listener })
 
         do {
-            try await transport.start(host: "127.0.0.1", port: 18787) { _ in Data() }
+            try await transport.start(host: "127.0.0.1", port: 18787) { _, _ in }
             XCTFail("Expected listener start failure")
         } catch {
             XCTAssertTrue(listener.didCancel)
@@ -70,9 +70,13 @@ private final class RecordingServerTransport: ServerTransport, @unchecked Sendab
     var startedHost: String?
     var startedPort: Int?
     var didStop = false
-    private var handler: ((Data) async throws -> Data)?
+    private var handler: (@Sendable (Data, @escaping RawResponseWriter) async -> Void)?
 
-    func start(host: String, port: Int, handler: @escaping @Sendable (Data) async throws -> Data) async throws {
+    func start(
+        host: String,
+        port: Int,
+        handler: @escaping @Sendable (Data, @escaping RawResponseWriter) async -> Void
+    ) async throws {
         startedHost = host
         startedPort = port
         self.handler = handler
@@ -83,7 +87,19 @@ private final class RecordingServerTransport: ServerTransport, @unchecked Sendab
     }
 
     func handle(_ request: Data) async throws -> Data {
-        try await XCTUnwrap(handler)(request)
+        let collector = ResponseCollector()
+        try await XCTUnwrap(handler)(request) { chunk in
+            await collector.append(chunk)
+        }
+        return await collector.data
+    }
+}
+
+private actor ResponseCollector {
+    private(set) var data = Data()
+
+    func append(_ chunk: Data) {
+        data.append(chunk)
     }
 }
 

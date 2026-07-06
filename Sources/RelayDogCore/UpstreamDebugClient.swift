@@ -45,7 +45,7 @@ public struct UpstreamDebugClient: Sendable {
             throw ProxyEngineError.invalidBaseURL(baseURL)
         }
 
-        let basePath = stripTrailingSlash(components.path)
+        let basePath = UpstreamURLBuilder.stripTrailingSlash(components.path)
         let endpoint: String
         switch proto {
         case .openAI:
@@ -146,10 +146,4 @@ public struct UpstreamDebugClient: Sendable {
         headers.sorted { lhs, rhs in lhs.key.lowercased() < rhs.key.lowercased() }
     }
 
-    private func stripTrailingSlash(_ value: String) -> String {
-        guard value.count > 1, value.hasSuffix("/") else {
-            return value
-        }
-        return String(value.dropLast())
-    }
 }

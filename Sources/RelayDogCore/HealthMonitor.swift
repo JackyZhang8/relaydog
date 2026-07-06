@@ -92,22 +92,7 @@ public struct HealthMonitor: Sendable {
     }
 
     private func healthCheckURL(baseURL: String, healthCheckPath: String) throws -> URL {
-        guard var components = URLComponents(string: baseURL) else {
-            throw ProxyEngineError.invalidBaseURL(baseURL)
-        }
-
-        let basePath = stripTrailingSlash(components.path)
-        let normalizedHealthCheckPath = stripLocalVersionPrefixIfNeeded(
-            basePath: basePath,
-            healthCheckPath: healthCheckPath
-        )
-        let checkPath = normalizedHealthCheckPath.hasPrefix("/") ? String(normalizedHealthCheckPath.dropFirst()) : normalizedHealthCheckPath
-        components.path = basePath.isEmpty ? "/" + checkPath : basePath + "/" + checkPath
-
-        guard let url = components.url else {
-            throw ProxyEngineError.invalidBaseURL(baseURL)
-        }
-        return url
+        try UpstreamURLBuilder.url(baseURL: baseURL, requestPath: healthCheckPath)
     }
 
     private func applyHeaders(to request: inout URLRequest, proto: ProxyProtocol, capability: ProtocolCapabilityConfig) {
@@ -125,25 +110,6 @@ public struct HealthMonitor: Sendable {
 
     private func elapsedMilliseconds(since started: Date) -> Int {
         max(0, Int(Date().timeIntervalSince(started) * 1000))
-    }
-
-    private func stripTrailingSlash(_ value: String) -> String {
-        guard value.count > 1, value.hasSuffix("/") else {
-            return value
-        }
-        return String(value.dropLast())
-    }
-
-    private func stripLocalVersionPrefixIfNeeded(basePath: String, healthCheckPath: String) -> String {
-        if basePath.hasSuffix("/v1"), healthCheckPath == "/v1" {
-            return ""
-        }
-
-        if basePath.hasSuffix("/v1"), healthCheckPath.hasPrefix("/v1/") {
-            return String(healthCheckPath.dropFirst("/v1".count))
-        }
-
-        return healthCheckPath
     }
 }
 

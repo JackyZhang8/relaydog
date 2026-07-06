@@ -96,6 +96,8 @@ public final class RequestLogStore: @unchecked Sendable {
     private let fileManager: FileManager
     private let encoder: JSONEncoder
     private var rotationSequence = 0
+    private var lastPruneAt: Date?
+    private let pruneInterval: TimeInterval = 60 * 60
 
     private var currentFile: URL {
         logsDirectory.appendingPathComponent("request-current.jsonl")
@@ -140,7 +142,15 @@ public final class RequestLogStore: @unchecked Sendable {
             try lineData.write(to: currentFile, options: .atomic)
         }
 
-        try pruneExpiredLogs(now: Date())
+        try pruneExpiredLogsIfNeeded(now: Date())
+    }
+
+    private func pruneExpiredLogsIfNeeded(now: Date) throws {
+        if let lastPruneAt, now.timeIntervalSince(lastPruneAt) < pruneInterval {
+            return
+        }
+        lastPruneAt = now
+        try pruneExpiredLogs(now: now)
     }
 
     private func makeLineData(for record: RequestLogRecord) throws -> Data {
@@ -164,8 +174,13 @@ public final class RequestLogStore: @unchecked Sendable {
             return
         }
 
-        rotationSequence += 1
-        let rotated = logsDirectory.appendingPathComponent(rotatedFileName())
+        var rotated: URL
+        repeat {
+            rotationSequence += 1
+            rotated = logsDirectory.appendingPathComponent(rotatedFileName())
+        } while fileManager.fileExists(atPath: rotated.path)
+            || fileManager.fileExists(atPath: rotated.appendingPathExtension("gz").path)
+
         try fileManager.moveItem(at: currentFile, to: rotated)
         try compressor.compress(rotated, to: rotated.appendingPathExtension("gz"))
     }

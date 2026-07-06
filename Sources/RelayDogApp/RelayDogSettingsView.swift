@@ -667,8 +667,6 @@ private struct SystemSettingsPage: View {
                     OpenURLRow(title: viewModel.text("数据目录", "Data Directory"), value: viewModel.paths.dataDirectory.path, url: viewModel.paths.dataDirectory)
                     Divider()
                     OpenURLRow(title: viewModel.text("配置文件", "Config File"), value: viewModel.paths.configFile.path, url: viewModel.paths.configFile)
-                    Divider()
-                    OpenURLRow(title: viewModel.text("状态文件", "State File"), value: viewModel.paths.stateFile.path, url: viewModel.paths.stateFile)
                 }
             }
         }

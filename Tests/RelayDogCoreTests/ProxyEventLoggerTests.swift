@@ -55,6 +55,7 @@ final class ProxyEventLoggerTests: XCTestCase {
                 error: nil
             )
         )
+        logger.waitUntilDrained()
 
         let log = try String(contentsOf: temp.url.appendingPathComponent("request-current.jsonl"), encoding: .utf8)
         XCTAssertTrue(log.contains("\"id\":\"event-1\""))
