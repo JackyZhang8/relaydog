@@ -137,10 +137,7 @@ public final class NWListenerServerTransport: ServerTransport, @unchecked Sendab
     }
 
     public func stop() async {
-        listenerLock.lock()
-        let listener = self.listener
-        self.listener = nil
-        listenerLock.unlock()
+        let listener = takeListener()
         listener?.cancel()
     }
 
@@ -148,6 +145,14 @@ public final class NWListenerServerTransport: ServerTransport, @unchecked Sendab
         listenerLock.lock()
         defer { listenerLock.unlock() }
         self.listener = listener
+    }
+
+    private func takeListener() -> (any NWListenerManaging)? {
+        listenerLock.lock()
+        defer { listenerLock.unlock() }
+        let listener = self.listener
+        self.listener = nil
+        return listener
     }
 
     private func startAndWaitUntilReady(_ listener: any NWListenerManaging) async throws {

@@ -79,7 +79,7 @@ public struct ModelManager: Sendable {
         }
 
         let modelSet = Set(capability.models)
-        let mappings = effectiveMappings(proto: proto, capability: capability, config: config)
+        let mappings = capability.modelMappings
 
         return mappings
             .filter { _, targetModel in !modelSet.contains(targetModel) }
