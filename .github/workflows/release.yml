@@ -96,7 +96,7 @@ jobs:
 
           cp "${BUILD_DIR}/RelayDogMenuBar" "${APP}/Contents/MacOS/${APP_NAME}"
           strip -S -x "${APP}/Contents/MacOS/${APP_NAME}"
-          # SwiftPM 资源包（logo 等），Bundle.module 会在主 bundle 的 Resources 下查找
+          # SwiftPM 资源包（logo 等）。应用代码会从标准的 Contents/Resources 位置解析。
           find "${BUILD_DIR}" -maxdepth 1 -name "*.bundle" -exec cp -R {} "${APP}/Contents/Resources/" \;
 
           # 由 PNG 生成 icns。直接写 ICNS 容器，避免 iconutil 对 iconset 校验不稳定。

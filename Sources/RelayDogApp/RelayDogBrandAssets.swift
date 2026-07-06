@@ -1,8 +1,46 @@
 import AppKit
 
 public enum RelayDogBrandAssets {
+    private static let resourceBundleName = "RelayDog_RelayDogApp.bundle"
+
+    static func resourceBundleURL(
+        mainBundleURL: URL = Bundle.main.bundleURL,
+        mainResourceURL: URL? = Bundle.main.resourceURL,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        let candidates = [
+            mainResourceURL?.appendingPathComponent(resourceBundleName, isDirectory: true),
+            mainBundleURL
+                .appendingPathComponent("Contents/Resources", isDirectory: true)
+                .appendingPathComponent(resourceBundleName, isDirectory: true),
+            mainBundleURL.appendingPathComponent(resourceBundleName, isDirectory: true)
+        ]
+
+        for candidate in candidates.compactMap({ $0 }) {
+            var isDirectory: ObjCBool = false
+            if fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                return candidate
+            }
+        }
+
+        return nil
+    }
+
+    private static var resourceBundle: Bundle? {
+        if let url = resourceBundleURL(), let bundle = Bundle(url: url) {
+            return bundle
+        }
+
+        if Bundle.main.bundleURL.pathExtension == "app" {
+            return nil
+        }
+
+        return Bundle.module
+    }
+
     public static var logoImage: NSImage? {
-        Bundle.module.image(forResource: "relaydog-logo")
+        resourceBundle?.image(forResource: "relaydog-logo")
     }
 
     public static func cornerAlpha() -> UInt8? {

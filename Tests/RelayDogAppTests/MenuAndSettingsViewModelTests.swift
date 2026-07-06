@@ -4,6 +4,29 @@ import RelayDogCore
 @testable import RelayDogApp
 
 final class MenuAndSettingsViewModelTests: XCTestCase {
+    func testBrandResourceBundlePrefersStandardAppResourcesDirectory() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("relaydog-resource-bundle-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        let appBundleURL = root.appendingPathComponent("RelayDog.app", isDirectory: true)
+        let resourcesURL = appBundleURL.appendingPathComponent("Contents/Resources", isDirectory: true)
+        let standardBundleURL = resourcesURL.appendingPathComponent("RelayDog_RelayDogApp.bundle", isDirectory: true)
+        let legacyBundleURL = appBundleURL.appendingPathComponent("RelayDog_RelayDogApp.bundle", isDirectory: true)
+
+        try fileManager.createDirectory(at: standardBundleURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: legacyBundleURL, withIntermediateDirectories: true)
+
+        XCTAssertEqual(
+            RelayDogBrandAssets.resourceBundleURL(
+                mainBundleURL: appBundleURL,
+                mainResourceURL: resourcesURL
+            )?.standardizedFileURL,
+            standardBundleURL.standardizedFileURL
+        )
+    }
+
     func testBrandLogoAssetIsBundledWithGeneratedAppIconArtwork() throws {
         let image = try XCTUnwrap(RelayDogBrandAssets.logoImage)
         XCTAssertEqual(image.size.width, 1024)
