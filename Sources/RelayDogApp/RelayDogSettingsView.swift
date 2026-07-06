@@ -160,6 +160,7 @@ private struct RelayDogMenuFieldModifier: ViewModifier {
             .buttonStyle(.borderless)
             .controlSize(.large)
             .frame(minHeight: 34)
+            .relayDogClickableCursor()
 
         if let width {
             field.frame(width: width, alignment: .leading)
@@ -944,6 +945,7 @@ private struct HeaderToggle: View {
         }
         .toggleStyle(.switch)
         .fixedSize()
+        .relayDogClickableCursor()
     }
 }
 
@@ -968,6 +970,7 @@ private struct ToggleSettingRow: View {
             )
             .toggleStyle(.switch)
             .labelsHidden()
+            .relayDogClickableCursor()
         }
         .padding(.vertical, 6)
     }
@@ -1173,6 +1176,7 @@ private struct EditableUpstreamRow: View {
             )
             .toggleStyle(.switch)
             .labelsHidden()
+            .relayDogClickableCursor()
             .frame(width: 46, alignment: .leading)
             .help(upstream.enabled ? t("停用", "Disable", language: language) : t("启用", "Enable", language: language))
 
@@ -2448,12 +2452,6 @@ private struct CopyableValueRow: View {
             }
             .relayDogIconButton()
             .help(isShowingCopied ? copiedMessage : "Copy")
-            .popover(isPresented: $isShowingCopied, arrowEdge: .trailing) {
-                Text(copiedMessage)
-                    .font(.callout.weight(.medium))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-            }
         }
         .onDisappear {
             feedbackTask?.cancel()
