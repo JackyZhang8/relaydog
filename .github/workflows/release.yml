@@ -1,7 +1,8 @@
 name: Release
 
-# 打 tag（如 v1.0.0）或手动运行即触发：构建通用二进制 -> 组装 .app -> 签名
-# -> 公证 -> 装订 -> 生成 update.json -> 发布 GitHub Release。
+# 打 tag（如 v1.0.0）或手动运行即触发：分别构建 arm64/x86_64 单架构包
+# -> 组装 .app -> strip -> 签名 -> 公证 -> 装订 -> 生成 update manifest
+# -> 发布 GitHub Release。
 #
 # 需要在仓库 Settings -> Secrets and variables -> Actions 配置以下 secrets：
 #   MACOS_CERTIFICATE_P12        Developer ID Application 证书（.p12 文件 base64 编码）
@@ -30,7 +31,7 @@ env:
   DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
 
 jobs:
-  release:
+  test:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +40,27 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
+
+      - name: Run tests
+        run: swift test
+
+  release:
+    name: Release ${{ matrix.arch }}
+    needs: test
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - arch: arm64
+            artifact_suffix: macos-arm64
+            update_manifest: update-arm64.json
+          - arch: x86_64
+            artifact_suffix: macos-x86_64
+            update_manifest: update-x86_64.json
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Derive release version
         id: version
@@ -62,32 +84,44 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
 
-      - name: Run tests
-        run: swift test
-
-      - name: Build universal binary
-        run: swift build -c release --arch arm64 --arch x86_64 --product RelayDogMenuBar
+      - name: Build ${{ matrix.arch }} binary
+        run: swift build --scratch-path .build/${{ matrix.arch }} -c release --arch ${{ matrix.arch }} --product RelayDogMenuBar
 
       - name: Assemble .app bundle
         run: |
           set -euo pipefail
-          BUILD_DIR=".build/apple/Products/Release"
+          BUILD_DIR=".build/${{ matrix.arch }}/${{ matrix.arch }}-apple-macosx/release"
           APP="dist/${APP_NAME}.app"
           mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 
           cp "${BUILD_DIR}/RelayDogMenuBar" "${APP}/Contents/MacOS/${APP_NAME}"
+          strip -S -x "${APP}/Contents/MacOS/${APP_NAME}"
           # SwiftPM 资源包（logo 等），Bundle.module 会在主 bundle 的 Resources 下查找
           find "${BUILD_DIR}" -maxdepth 1 -name "*.bundle" -exec cp -R {} "${APP}/Contents/Resources/" \;
 
-          # 由 PNG 生成 icns
-          ICONSET="dist/AppIcon.iconset"
-          mkdir -p "${ICONSET}"
+          # 由 PNG 生成 icns。直接写 ICNS 容器，避免 iconutil 对 iconset 校验不稳定。
+          ICON_WORKDIR="dist/AppIconPngs"
+          mkdir -p "${ICON_WORKDIR}"
           SRC="Sources/RelayDogApp/Resources/relaydog-logo.png"
-          for size in 16 32 64 128 256 512; do
-            sips -z ${size} ${size} "${SRC}" --out "${ICONSET}/icon_${size}x${size}.png" >/dev/null
-            sips -z $((size*2)) $((size*2)) "${SRC}" --out "${ICONSET}/icon_${size}x${size}@2x.png" >/dev/null
+          for item in icp4:16 icp5:32 icp6:64 ic07:128 ic08:256 ic09:512 ic10:1024; do
+            icon_type="${item%%:*}"
+            icon_size="${item##*:}"
+            sips -z "${icon_size}" "${icon_size}" "${SRC}" --out "${ICON_WORKDIR}/${icon_type}.png" >/dev/null
           done
-          iconutil -c icns "${ICONSET}" -o "${APP}/Contents/Resources/AppIcon.icns"
+          APP_ICON_OUTPUT="${APP}/Contents/Resources/AppIcon.icns" ICON_WORKDIR="${ICON_WORKDIR}" python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import struct
+
+          icon_dir = Path(os.environ["ICON_WORKDIR"])
+          output = Path(os.environ["APP_ICON_OUTPUT"])
+          chunks = []
+          for icon_type in ["icp4", "icp5", "icp6", "ic07", "ic08", "ic09", "ic10"]:
+              data = (icon_dir / f"{icon_type}.png").read_bytes()
+              chunks.append(icon_type.encode("ascii") + struct.pack(">I", len(data) + 8) + data)
+          body = b"".join(chunks)
+          output.write_bytes(b"icns" + struct.pack(">I", len(body) + 8) + body)
+          PY
 
           cat > "${APP}/Contents/Info.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
@@ -164,12 +198,14 @@ jobs:
       - name: Package release artifacts
         run: |
           set -euo pipefail
-          ditto -c -k --keepParent "dist/${APP_NAME}.app" "dist/${APP_NAME}-${VERSION}.zip"
+          ARTIFACT_NAME="${APP_NAME}-${VERSION}-${{ matrix.artifact_suffix }}.zip"
+          UPDATE_MANIFEST="${{ matrix.update_manifest }}"
+          ditto -c -k --keepParent "dist/${APP_NAME}.app" "dist/${ARTIFACT_NAME}"
 
-          cat > dist/update.json <<JSON
+          cat > "dist/${UPDATE_MANIFEST}" <<JSON
           {
             "version": "${VERSION}",
-            "downloadURL": "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${APP_NAME}-${VERSION}.zip",
+            "downloadURL": "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${ARTIFACT_NAME}",
             "releaseNotes": "https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
           }
           JSON
@@ -180,6 +216,6 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
           files: |
-            dist/${{ env.APP_NAME }}-${{ steps.version.outputs.version }}.zip
-            dist/update.json
+            dist/${{ env.APP_NAME }}-${{ steps.version.outputs.version }}-${{ matrix.artifact_suffix }}.zip
+            dist/${{ matrix.update_manifest }}
           generate_release_notes: true

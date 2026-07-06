@@ -2,6 +2,16 @@ import XCTest
 @testable import RelayDogCore
 
 final class AppUpdateCheckerTests: XCTestCase {
+    func testDefaultUpdateManifestURLUsesCurrentArchitecture() {
+        #if arch(arm64)
+        XCTAssertEqual(RelayDogAppInfo.updateManifestURL.lastPathComponent, "update-arm64.json")
+        #elseif arch(x86_64)
+        XCTAssertEqual(RelayDogAppInfo.updateManifestURL.lastPathComponent, "update-x86_64.json")
+        #else
+        XCTAssertEqual(RelayDogAppInfo.updateManifestURL.lastPathComponent, "update.json")
+        #endif
+    }
+
     func testVersionComparison() throws {
         XCTAssertLessThan(try version("1.0.0"), try version("1.0.1"))
         XCTAssertLessThan(try version("1.9.0"), try version("1.10.0"))

@@ -69,7 +69,19 @@ public enum AppUpdateCheckerError: Error, Equatable {
 public enum RelayDogAppInfo {
     public static let fallbackVersion = "0.1.0"
     public static let repositoryURL = "https://github.com/JackyZhang8/relaydog"
-    public static let updateManifestURL = URL(string: "https://github.com/JackyZhang8/relaydog/releases/latest/download/update.json")!
+    public static let updateManifestURL = URL(
+        string: "https://github.com/JackyZhang8/relaydog/releases/latest/download/\(updateManifestName)"
+    )!
+
+    public static var updateManifestName: String {
+        #if arch(arm64)
+        "update-arm64.json"
+        #elseif arch(x86_64)
+        "update-x86_64.json"
+        #else
+        "update.json"
+        #endif
+    }
 
     public static var currentVersion: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? fallbackVersion
