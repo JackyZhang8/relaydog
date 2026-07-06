@@ -288,7 +288,7 @@ public final class RelayDogAppModel: ObservableObject {
         }
 
         config.listener.port = port
-        try await saveAndRestartIfRunning()
+        try await saveAndRestartIfRunning(startIfEnabled: true)
     }
 
     public func setListenerHost(_ host: String) async throws {
@@ -298,7 +298,7 @@ public final class RelayDogAppModel: ObservableObject {
         }
 
         config.listener.host = host
-        try await saveAndRestartIfRunning()
+        try await saveAndRestartIfRunning(startIfEnabled: true)
     }
 
     public func setRequestLoggingEnabled(_ enabled: Bool) async throws {
@@ -377,14 +377,14 @@ public final class RelayDogAppModel: ObservableObject {
         try ConfigStore(paths: paths).save(config)
     }
 
-    private func saveAndRestartIfRunning() async throws {
+    private func saveAndRestartIfRunning(startIfEnabled: Bool = false) async throws {
         try saveConfig()
-        await restartProxyIfRunning()
+        await restartProxyIfRunning(startIfEnabled: startIfEnabled)
     }
 
-    private func restartProxyIfRunning() async {
+    private func restartProxyIfRunning(startIfEnabled: Bool = false) async {
         let wasRunning = runtimeController != nil
-        guard wasRunning || config.listener.enabled else {
+        guard wasRunning || (startIfEnabled && config.listener.enabled) else {
             return
         }
 
