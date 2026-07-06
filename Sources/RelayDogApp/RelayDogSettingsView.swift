@@ -515,7 +515,11 @@ private struct AboutSettingsPage: View {
             }
 
             SettingsPanel(viewModel.text("项目", "Project"), systemImage: "curlybraces") {
-                OpenURLRow(title: "GitHub", value: "https://github.com/JackyZhang8/relaydog", url: URL(string: "https://github.com/JackyZhang8/relaydog")!)
+                VStack(spacing: 0) {
+                    OpenURLRow(title: "GitHub", value: RelayDogAppInfo.repositoryURL, url: URL(string: RelayDogAppInfo.repositoryURL)!)
+                    Divider()
+                    VersionUpdateRow(viewModel: viewModel)
+                }
             }
         }
     }
@@ -551,6 +555,88 @@ private struct AboutSettingsPage: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .relayDogCard()
+    }
+}
+
+private struct VersionUpdateRow: View {
+    let viewModel: RelayDogSettingsViewModel
+
+    private enum CheckState: Equatable {
+        case idle
+        case checking
+        case upToDate
+        case updateAvailable(version: String, downloadURL: URL)
+        case failed
+    }
+
+    @State private var state: CheckState = .idle
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ValueRow(title: viewModel.text("版本", "Version"), value: "v\(RelayDogAppInfo.currentVersion)")
+
+            Spacer(minLength: 8)
+
+            statusText
+
+            if case let .updateAvailable(version, downloadURL) = state {
+                Button {
+                    openURL(downloadURL)
+                } label: {
+                    Label(viewModel.text("升级到 v\(version)", "Update to v\(version)"), systemImage: "arrow.down.circle.fill")
+                }
+                .relayDogPrimaryButton()
+            } else {
+                Button {
+                    checkForUpdates()
+                } label: {
+                    Text(viewModel.text("检查更新", "Check for Updates"))
+                }
+                .relayDogSecondaryButton()
+                .disabled(state == .checking)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var statusText: some View {
+        switch state {
+        case .idle:
+            EmptyView()
+        case .checking:
+            ProgressView()
+                .controlSize(.small)
+        case .upToDate:
+            Text(viewModel.text("已是最新版本", "Up to date"))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        case .updateAvailable:
+            EmptyView()
+        case .failed:
+            Text(viewModel.text("检查失败，请稍后重试", "Check failed, try again later"))
+                .font(.callout)
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private func checkForUpdates() {
+        state = .checking
+        Task { @MainActor in
+            do {
+                switch try await AppUpdateChecker().check() {
+                case .upToDate:
+                    state = .upToDate
+                case .updateAvailable(let manifest):
+                    if let url = URL(string: manifest.downloadURL) {
+                        state = .updateAvailable(version: manifest.version, downloadURL: url)
+                    } else {
+                        state = .failed
+                    }
+                }
+            } catch {
+                state = .failed
+            }
+        }
     }
 }
 

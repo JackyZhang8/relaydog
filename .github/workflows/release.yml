@@ -1,0 +1,153 @@
+name: Release
+
+# 打 tag（如 v1.0.0）即触发：构建通用二进制 -> 组装 .app -> 签名 -> 公证 -> 装订
+# -> 生成 update.json -> 发布 GitHub Release。
+#
+# 需要在仓库 Settings -> Secrets and variables -> Actions 配置以下 secrets：
+#   MACOS_CERTIFICATE_P12        Developer ID Application 证书（.p12 文件 base64 编码）
+#   MACOS_CERTIFICATE_PASSWORD   上述 .p12 的导出密码
+#   MACOS_SIGNING_IDENTITY       签名身份，如 "Developer ID Application: Your Name (TEAMID)"
+#   NOTARY_API_KEY_ID            App Store Connect API Key ID
+#   NOTARY_API_ISSUER_ID         App Store Connect API Issuer ID
+#   NOTARY_API_KEY_P8            App Store Connect API 私钥（.p8 文件 base64 编码）
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: RelayDog
+  BUNDLE_ID: com.jackyzhang.relaydog
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build universal binary
+        run: swift build -c release --arch arm64 --arch x86_64 --product RelayDogMenuBar
+
+      - name: Assemble .app bundle
+        run: |
+          set -euo pipefail
+          BUILD_DIR=".build/apple/Products/Release"
+          APP="dist/${APP_NAME}.app"
+          mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
+
+          cp "${BUILD_DIR}/RelayDogMenuBar" "${APP}/Contents/MacOS/${APP_NAME}"
+          # SwiftPM 资源包（logo 等），Bundle.module 会在主 bundle 的 Resources 下查找
+          find "${BUILD_DIR}" -maxdepth 1 -name "*.bundle" -exec cp -R {} "${APP}/Contents/Resources/" \;
+
+          # 由 PNG 生成 icns
+          ICONSET="dist/AppIcon.iconset"
+          mkdir -p "${ICONSET}"
+          SRC="Sources/RelayDogApp/Resources/relaydog-logo.png"
+          for size in 16 32 64 128 256 512; do
+            sips -z ${size} ${size} "${SRC}" --out "${ICONSET}/icon_${size}x${size}.png" >/dev/null
+            sips -z $((size*2)) $((size*2)) "${SRC}" --out "${ICONSET}/icon_${size}x${size}@2x.png" >/dev/null
+          done
+          iconutil -c icns "${ICONSET}" -o "${APP}/Contents/Resources/AppIcon.icns"
+
+          cat > "${APP}/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key><string>zh_CN</string>
+            <key>CFBundleExecutable</key><string>${APP_NAME}</string>
+            <key>CFBundleIconFile</key><string>AppIcon</string>
+            <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
+            <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+            <key>CFBundleName</key><string>${APP_NAME}</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+            <key>CFBundleVersion</key><string>${VERSION}</string>
+            <key>LSMinimumSystemVersion</key><string>13.0</string>
+            <key>LSUIElement</key><true/>
+            <key>NSHumanReadableCopyright</key><string>© $(date +%Y) RelayDog</string>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="${RUNNER_TEMP}/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "${MACOS_CERTIFICATE_P12}" | base64 --decode > "${RUNNER_TEMP}/certificate.p12"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${RUNNER_TEMP}/certificate.p12" -k "${KEYCHAIN_PATH}" \
+            -P "${MACOS_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security list-keychains -d user -s "${KEYCHAIN_PATH}" login.keychain-db
+          rm "${RUNNER_TEMP}/certificate.p12"
+
+      - name: Codesign
+        env:
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          APP="dist/${APP_NAME}.app"
+          codesign --force --deep --options runtime --timestamp \
+            --sign "${MACOS_SIGNING_IDENTITY}" "${APP}"
+          codesign --verify --deep --strict --verbose=2 "${APP}"
+
+      - name: Notarize
+        env:
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER_ID: ${{ secrets.NOTARY_API_ISSUER_ID }}
+          NOTARY_API_KEY_P8: ${{ secrets.NOTARY_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          APP="dist/${APP_NAME}.app"
+          KEY_PATH="${RUNNER_TEMP}/notary_key.p8"
+          echo "${NOTARY_API_KEY_P8}" | base64 --decode > "${KEY_PATH}"
+
+          ditto -c -k --keepParent "${APP}" "dist/${APP_NAME}-notarize.zip"
+          xcrun notarytool submit "dist/${APP_NAME}-notarize.zip" \
+            --key "${KEY_PATH}" \
+            --key-id "${NOTARY_API_KEY_ID}" \
+            --issuer "${NOTARY_API_ISSUER_ID}" \
+            --wait
+          rm "${KEY_PATH}" "dist/${APP_NAME}-notarize.zip"
+
+          xcrun stapler staple "${APP}"
+          spctl --assess --type execute --verbose=2 "${APP}"
+
+      - name: Package release artifacts
+        run: |
+          set -euo pipefail
+          ditto -c -k --keepParent "dist/${APP_NAME}.app" "dist/${APP_NAME}-${VERSION}.zip"
+
+          cat > dist/update.json <<JSON
+          {
+            "version": "${VERSION}",
+            "downloadURL": "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${APP_NAME}-${VERSION}.zip",
+            "releaseNotes": "https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
+          }
+          JSON
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/${{ env.APP_NAME }}-${{ env.VERSION }}.zip
+            dist/update.json
+          generate_release_notes: true
