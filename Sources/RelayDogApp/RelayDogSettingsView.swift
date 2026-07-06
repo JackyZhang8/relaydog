@@ -293,12 +293,12 @@ public struct RelayDogSettingsView: View {
 
             SettingsTabBar(selection: $selection, language: viewModel.effectiveLanguage)
                 .padding(.horizontal, 16)
-                .padding(.top, 14)
+                .padding(.top, 10)
                 .padding(.bottom, 2)
 
             SettingsTabContent(tab: selection, viewModel: viewModel, actions: actions)
             .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.bottom, 12)
         }
         .frame(minWidth: 860, minHeight: 620)
         .background(
@@ -429,7 +429,7 @@ private struct SettingsTabContent: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 switch tab {
                 case .overview:
                     OverviewSettingsPage(viewModel: viewModel, actions: actions)
@@ -443,7 +443,7 @@ private struct SettingsTabContent: View {
                     AboutSettingsPage(viewModel: viewModel)
                 }
             }
-            .padding(.top, 16)
+            .padding(.top, 12)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
@@ -454,7 +454,7 @@ private struct OverviewSettingsPage: View {
     let actions: RelayDogSettingsActions
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             SettingsPanel(viewModel.text("客户端地址", "Client URLs"), systemImage: "link") {
                 VStack(spacing: 0) {
                     ForEach(viewModel.endpointItems, id: \.title) { item in
@@ -495,7 +495,7 @@ private struct AboutSettingsPage: View {
     var body: some View {
         let details = viewModel.aboutDetails
 
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             aboutHero(details)
 
             SettingsPanel(viewModel.text("核心能力", "Highlights"), systemImage: "sparkles") {
@@ -521,35 +521,36 @@ private struct AboutSettingsPage: View {
     }
 
     private func aboutHero(_ details: RelayDogSettingsAboutDetails) -> some View {
-        VStack(spacing: 10) {
+        HStack(alignment: .center, spacing: 16) {
             if let image = RelayDogBrandAssets.logoImage {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .shadow(color: RelayDogTheme.brandStart.opacity(0.3), radius: 10, x: 0, y: 4)
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 13))
+                    .shadow(color: RelayDogTheme.brandStart.opacity(0.3), radius: 8, x: 0, y: 3)
             }
 
-            Text(details.title)
-                .font(.title2.weight(.bold))
-                .foregroundStyle(RelayDogTheme.brandGradient)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(details.title)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(RelayDogTheme.brandGradient)
+                    Text(viewModel.headerTagline)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
 
-            Text(viewModel.headerTagline)
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.secondary)
-
-            Text(details.description)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 560)
-                .padding(.top, 2)
+                Text(details.description)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 26)
-        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
         .relayDogCard()
     }
 }
@@ -560,13 +561,13 @@ private struct FeatureTile: View {
     let color: Color
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(color)
-                .frame(width: 30, height: 30)
+                .frame(width: 26, height: 26)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 7)
                         .fill(color.opacity(0.12))
                 )
             Text(title)
@@ -574,8 +575,8 @@ private struct FeatureTile: View {
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
         .background(FormFieldBackground())
     }
 }
@@ -594,7 +595,7 @@ private struct StorageNoteCallout: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(10)
         .background(
             RoundedRectangle(cornerRadius: formCornerRadius)
                 .fill(Color.orange.opacity(0.08))
@@ -646,7 +647,7 @@ private struct ConnectionsSettingsPage: View {
     @State private var isAddingUpstream = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             SettingsPanelWithAction(
                 viewModel.text("中转站", "Upstreams"),
                 systemImage: "server.rack"
@@ -720,7 +721,7 @@ private struct LogsSettingsPage: View {
     let actions: RelayDogSettingsActions
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             SettingsPanel(viewModel.text("请求日志", "Request Logs"), systemImage: "doc.text.magnifyingglass") {
                 VStack(spacing: 0) {
                     ToggleSettingRow(
@@ -775,7 +776,7 @@ private struct SystemSettingsPage: View {
     let actions: RelayDogSettingsActions
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             SettingsPanel(viewModel.text("语言", "Language"), systemImage: "globe") {
                 HStack(spacing: 12) {
                     FormPickerRow(
@@ -813,6 +814,13 @@ private struct SystemSettingsPage: View {
                         isOn: viewModel.config.listener.enabled,
                         setIsOn: actions.setListenerEnabled
                     )
+                    Text(viewModel.text(
+                        "修改 Host 或 Port 保存后会自动重启监听并立即生效，菜单栏地址会同步更新。",
+                        "Host or port changes restart the listener automatically and take effect immediately; the menu bar address updates as well."
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
                 }
             }
 
@@ -839,12 +847,12 @@ private struct SettingsPanel<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             SettingsPanelHeader(title: title, systemImage: systemImage)
 
             content
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .relayDogCard()
     }
@@ -903,7 +911,7 @@ private struct SettingsPanelWithAction<Content: View, Action: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
                 SettingsPanelHeader(title: title, systemImage: systemImage)
                 Spacer()
@@ -912,7 +920,7 @@ private struct SettingsPanelWithAction<Content: View, Action: View>: View {
 
             content
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .relayDogCard()
     }
@@ -961,7 +969,7 @@ private struct ToggleSettingRow: View {
             .toggleStyle(.switch)
             .labelsHidden()
         }
-        .padding(.vertical, 9)
+        .padding(.vertical, 6)
     }
 }
 
@@ -1008,7 +1016,7 @@ private struct EditableIntegerRow: View {
             .help("Save")
             .disabled(parsedValue == nil)
         }
-        .padding(.vertical, 9)
+        .padding(.vertical, 6)
         .onChange(of: value) { newValue in
             text = "\(newValue)"
         }
@@ -1062,7 +1070,7 @@ private struct ListenerHostRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 9)
+        .padding(.vertical, 6)
     }
 }
 
@@ -1315,7 +1323,7 @@ private struct UpstreamEditorSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center) {
                 Text(title)
                     .font(.title3.weight(.semibold))
@@ -1342,7 +1350,7 @@ private struct UpstreamEditorSheet: View {
             .controlSize(.large)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
                     switch selectedTab {
                     case .basic:
                         UpstreamBasicEditor(
@@ -1745,7 +1753,7 @@ private struct DraftModelMappingsEditor: View {
                             .relayDogIconButton()
                             .help("Delete")
                         }
-                        .padding(.vertical, 9)
+                        .padding(.vertical, 6)
 
                         if mapping.client != sortedMappings.last?.client {
                             Divider()
@@ -2481,7 +2489,7 @@ private struct ValueRow: View {
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 9)
+        .padding(.vertical, 6)
     }
 }
 
