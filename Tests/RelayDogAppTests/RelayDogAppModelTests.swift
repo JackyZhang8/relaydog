@@ -110,6 +110,40 @@ final class RelayDogAppModelTests: XCTestCase {
         XCTAssertEqual(model.runtimeState, .running(host: "0.0.0.0", port: 18787))
     }
 
+    func testStartProxyIfNeededDoesNothingWhenListenerDisabled() async throws {
+        let temp = try TemporaryAppModelHome()
+        let store = ConfigStore(paths: AppPaths(homeDirectory: temp.url))
+        var config = appModelConfig()
+        config.listener.enabled = false
+        try store.save(config)
+        let factory = RecordingRuntimeFactory()
+        let model = RelayDogAppModel(paths: store.paths, runtimeFactory: factory.makeRuntime)
+
+        await model.startProxyIfNeeded()
+
+        XCTAssertTrue(factory.runtimes.isEmpty)
+
+        try await model.setListenerEnabled(true)
+
+        XCTAssertEqual(factory.runtimes.count, 1)
+        XCTAssertEqual(factory.runtimes[0].startCount, 1)
+    }
+
+    func testConcurrentStartProxyIfNeededStartsSingleRuntime() async throws {
+        let temp = try TemporaryAppModelHome()
+        let store = ConfigStore(paths: AppPaths(homeDirectory: temp.url))
+        try store.save(appModelConfig())
+        let factory = RecordingRuntimeFactory()
+        let model = RelayDogAppModel(paths: store.paths, runtimeFactory: factory.makeRuntime)
+
+        async let first: Void = model.startProxyIfNeeded()
+        async let second: Void = model.startProxyIfNeeded()
+        _ = await (first, second)
+
+        XCTAssertEqual(factory.runtimes.count, 1)
+        XCTAssertEqual(factory.runtimes[0].startCount, 1)
+    }
+
     func testSetListenerEnabledStopsAndStartsRuntime() async throws {
         let temp = try TemporaryAppModelHome()
         let store = ConfigStore(paths: AppPaths(homeDirectory: temp.url))

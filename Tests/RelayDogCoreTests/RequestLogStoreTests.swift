@@ -27,6 +27,41 @@ final class RequestLogStoreTests: XCTestCase {
         XCTAssertTrue(compressor.compressedSources[0].lastPathComponent.hasPrefix("request-"))
     }
 
+    func testPruneRemovesExpiredArchivesButKeepsCurrentFile() throws {
+        let temp = try TemporaryDirectory()
+        let store = RequestLogStore(logsDirectory: temp.url, maxFileBytes: 1024, retentionDays: 7, compressor: RecordingCompressor())
+        let oldDate = Date().addingTimeInterval(-30 * 24 * 60 * 60)
+        let archive = temp.url.appendingPathComponent("request-2020-01-01-000000-001.jsonl.gz")
+        let current = temp.url.appendingPathComponent("request-current.jsonl")
+        try Data("old".utf8).write(to: archive)
+        try Data("{}\n".utf8).write(to: current)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: archive.path)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: current.path)
+
+        try store.append(.fixture(id: "req-1", path: "/v1/responses"))
+
+        let files = try FileManager.default.contentsOfDirectory(atPath: temp.url.path)
+        XCTAssertEqual(files, ["request-current.jsonl"])
+        let text = try String(contentsOf: current, encoding: .utf8)
+        XCTAssertTrue(text.contains("\"id\":\"req-1\""))
+    }
+
+    #if canImport(Compression)
+    func testGzipCompressorProducesGzipFileAndRemovesSource() throws {
+        let temp = try TemporaryDirectory()
+        let source = temp.url.appendingPathComponent("request-old.jsonl")
+        let destination = source.appendingPathExtension("gz")
+        try Data(String(repeating: "{\"ok\":true}\n", count: 100).utf8).write(to: source)
+
+        try GzipLogCompressor().compress(source, to: destination)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        let compressed = try Data(contentsOf: destination)
+        XCTAssertEqual(Array(compressed.prefix(2)), [0x1f, 0x8b])
+        XCTAssertLessThan(compressed.count, 100 * 12)
+    }
+    #endif
+
     func testConcurrentAppendsPreserveEveryJsonLine() async throws {
         let temp = try TemporaryDirectory()
         let store = RequestLogStore(logsDirectory: temp.url, maxFileBytes: 1024 * 1024, retentionDays: 7, compressor: RecordingCompressor())

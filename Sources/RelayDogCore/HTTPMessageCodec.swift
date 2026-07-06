@@ -90,6 +90,22 @@ public enum HTTPMessageCodec {
         encodeHead(statusCode: statusCode, headers: headers, extraHeaderLines: [])
     }
 
+    public static func encodeChunkedResponseHead(statusCode: Int, headers: [String: String]) -> Data {
+        encodeHead(statusCode: statusCode, headers: headers, extraHeaderLines: ["Transfer-Encoding: chunked"])
+    }
+
+    public static func encodeChunk(_ chunk: Data) -> Data {
+        guard !chunk.isEmpty else {
+            return Data()
+        }
+        var data = Data((String(chunk.count, radix: 16) + "\r\n").utf8)
+        data.append(chunk)
+        data.append(Data("\r\n".utf8))
+        return data
+    }
+
+    public static let chunkedBodyTerminator = Data("0\r\n\r\n".utf8)
+
     public static func completeRequestData(in data: Data) throws -> Data? {
         guard let head = try parseHeadIfComplete(data) else {
             return nil
@@ -149,8 +165,8 @@ public enum HTTPMessageCodec {
             let name = String(line[..<colon])
             let valueStart = line.index(after: colon)
             let value = String(line[valueStart...]).trimmingCharacters(in: .whitespaces)
-            if let existing = headers[name] {
-                headers[name] = existing + ", " + value
+            if let existingKey = headers.keys.first(where: { $0.lowercased() == name.lowercased() }) {
+                headers[existingKey] = headers[existingKey]! + ", " + value
             } else {
                 headers[name] = value
             }
@@ -235,7 +251,11 @@ public enum HTTPMessageCodec {
             return 0
         }
 
-        guard let length = Int(value), length >= 0 else {
+        let candidates = Set(value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+        guard candidates.count == 1,
+              let candidate = candidates.first,
+              let length = Int(candidate),
+              length >= 0 else {
             throw HTTPMessageCodecError.invalidContentLength(value)
         }
         return length
