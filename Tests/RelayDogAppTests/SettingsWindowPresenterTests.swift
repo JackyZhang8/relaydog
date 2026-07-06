@@ -30,7 +30,7 @@ final class SettingsWindowPresenterTests: XCTestCase {
         XCTAssertEqual(fakeWindow.orderFrontCount, 1)
         XCTAssertEqual(fakeWindow.orderFrontRegardlessCount, 1)
         XCTAssertEqual(activationCount, 1)
-        XCTAssertEqual(events, ["center", "activate", "makeKeyAndOrderFront", "orderFrontRegardless"])
+        XCTAssertEqual(events, ["activate", "makeKeyAndOrderFront", "orderFrontRegardless", "centerOnScreen"])
     }
 
     func testShowReusesExistingSettingsWindow() {
@@ -125,8 +125,8 @@ private final class FakeSettingsWindow: RelayDogSettingsWindowing {
     private(set) var orderFrontCount = 0
     private(set) var orderFrontRegardlessCount = 0
 
-    func center() {
-        events?("center")
+    func centerOnScreen() {
+        events?("centerOnScreen")
         centerCount += 1
     }
 

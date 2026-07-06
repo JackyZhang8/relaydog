@@ -4,12 +4,25 @@ import SwiftUI
 @MainActor
 public protocol RelayDogSettingsWindowing: AnyObject {
     var isVisible: Bool { get }
-    func center()
+    func centerOnScreen()
     func makeKeyAndOrderFront(_ sender: Any?)
     func orderFrontRegardless()
 }
 
-extension NSWindow: RelayDogSettingsWindowing {}
+extension NSWindow: RelayDogSettingsWindowing {
+    public func centerOnScreen() {
+        guard let screen = screen ?? NSScreen.main else {
+            center()
+            return
+        }
+
+        let visible = screen.visibleFrame
+        setFrameOrigin(NSPoint(
+            x: visible.midX - frame.width / 2,
+            y: visible.midY - frame.height / 2
+        ))
+    }
+}
 
 @MainActor
 public final class RelayDogSettingsWindowPresenter: ObservableObject {
@@ -78,11 +91,11 @@ public final class RelayDogSettingsWindowPresenter: ObservableObject {
     }
 
     private func present(_ window: any RelayDogSettingsWindowing, shouldCenter: Bool) {
-        if shouldCenter {
-            window.center()
-        }
         activateApp()
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
+        if shouldCenter {
+            window.centerOnScreen()
+        }
     }
 }
