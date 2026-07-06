@@ -383,7 +383,8 @@ public final class RelayDogAppModel: ObservableObject {
     }
 
     private func restartProxyIfRunning() async {
-        guard runtimeController != nil else {
+        let wasRunning = runtimeController != nil
+        guard wasRunning || config.listener.enabled else {
             return
         }
 
