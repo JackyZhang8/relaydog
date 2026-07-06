@@ -7,9 +7,9 @@ public enum UpstreamURLBuilder {
         }
 
         let split = splitPathAndQuery(requestPath)
-        let basePath = stripTrailingSlash(components.path)
+        let basePath = stripTrailingSlash(components.percentEncodedPath)
         let pathToAppend = stripLocalVersionPrefixIfNeeded(basePath: basePath, requestPath: split.path)
-        components.path = joinPath(basePath, pathToAppend)
+        components.percentEncodedPath = joinPath(basePath, pathToAppend)
         components.percentEncodedQuery = split.query
 
         guard let url = components.url else {

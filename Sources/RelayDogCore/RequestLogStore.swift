@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Compression)
+import Compression
+#endif
 
 public protocol LogCompressor {
     func compress(_ source: URL, to destination: URL) throws
@@ -8,23 +11,77 @@ public struct GzipLogCompressor: LogCompressor {
     public init() {}
 
     public func compress(_ source: URL, to destination: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/gzip")
-        process.arguments = ["-c", source.path]
+        let sourceData = try Data(contentsOf: source)
+        let compressed = try Self.gzipData(sourceData)
+        try compressed.write(to: destination, options: .atomic)
+        try FileManager.default.removeItem(at: source)
+    }
 
-        let output = Pipe()
-        process.standardOutput = output
-        try process.run()
+    static func gzipData(_ data: Data) throws -> Data {
+        #if canImport(Compression)
+        let deflated = try zlibDeflate(data)
 
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        var output = Data([0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03])
+        output.append(deflated)
 
-        guard process.terminationStatus == 0 else {
-            throw RequestLogStoreError.compressionFailed(source.path)
+        var crc = crc32(data)
+        withUnsafeBytes(of: &crc) { output.append(contentsOf: $0) }
+        var size = UInt32(truncatingIfNeeded: data.count)
+        withUnsafeBytes(of: &size) { output.append(contentsOf: $0) }
+        return output
+        #else
+        throw RequestLogStoreError.compressionFailed("Compression framework unavailable")
+        #endif
+    }
+
+    #if canImport(Compression)
+    private static func zlibDeflate(_ data: Data) throws -> Data {
+        guard !data.isEmpty else {
+            // Raw deflate of empty input: a single empty stored block.
+            return Data([0x03, 0x00])
         }
 
-        try data.write(to: destination, options: .atomic)
-        try FileManager.default.removeItem(at: source)
+        let destinationCapacity = data.count + max(64, data.count / 2)
+        let destination = UnsafeMutablePointer<UInt8>.allocate(capacity: destinationCapacity)
+        defer { destination.deallocate() }
+
+        let compressedSize = data.withUnsafeBytes { (sourceBuffer: UnsafeRawBufferPointer) -> Int in
+            guard let sourcePointer = sourceBuffer.bindMemory(to: UInt8.self).baseAddress else {
+                return 0
+            }
+            return compression_encode_buffer(
+                destination,
+                destinationCapacity,
+                sourcePointer,
+                data.count,
+                nil,
+                COMPRESSION_ZLIB
+            )
+        }
+
+        guard compressedSize > 0 else {
+            throw RequestLogStoreError.compressionFailed("compression_encode_buffer failed")
+        }
+
+        return Data(bytes: destination, count: compressedSize)
+    }
+    #endif
+
+    private static func crc32(_ data: Data) -> UInt32 {
+        var table = [UInt32](repeating: 0, count: 256)
+        for index in 0..<256 {
+            var value = UInt32(index)
+            for _ in 0..<8 {
+                value = (value & 1) == 1 ? (0xEDB88320 ^ (value >> 1)) : (value >> 1)
+            }
+            table[index] = value
+        }
+
+        var crc: UInt32 = 0xFFFFFFFF
+        for byte in data {
+            crc = table[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
+        }
+        return crc ^ 0xFFFFFFFF
     }
 }
 
@@ -220,6 +277,9 @@ public final class RequestLogStore: @unchecked Sendable {
 
     private func isLogArchive(_ url: URL) -> Bool {
         let name = url.lastPathComponent
+        guard name != currentFile.lastPathComponent else {
+            return false
+        }
         return name.hasPrefix("request-") && (name.hasSuffix(".jsonl") || name.hasSuffix(".jsonl.gz"))
     }
 }

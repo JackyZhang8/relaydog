@@ -103,6 +103,40 @@ final class HTTPMessageCodecTests: XCTestCase {
         }
     }
 
+    func testMergesDuplicateHeadersCaseInsensitively() throws {
+        let raw = Data("GET /v1/models HTTP/1.1\r\nX-Trace: a\r\nx-trace: b\r\n\r\n".utf8)
+
+        let request = try HTTPMessageCodec.parseRequest(raw)
+
+        XCTAssertEqual(request.headers["X-Trace"], "a, b")
+        XCTAssertNil(request.headers["x-trace"])
+    }
+
+    func testRejectsConflictingDuplicateContentLengthHeaders() {
+        let raw = Data("POST /v1/responses HTTP/1.1\r\nContent-Length: 2\r\ncontent-length: 999\r\n\r\nhi".utf8)
+
+        XCTAssertThrowsError(try HTTPMessageCodec.parseRequest(raw)) { error in
+            XCTAssertEqual(error as? HTTPMessageCodecError, .invalidContentLength("2, 999"))
+        }
+    }
+
+    func testAcceptsRepeatedIdenticalContentLengthHeaders() throws {
+        let raw = Data("POST /v1/responses HTTP/1.1\r\nContent-Length: 2\r\ncontent-length: 2\r\n\r\nhi".utf8)
+
+        let request = try HTTPMessageCodec.parseRequest(raw)
+
+        XCTAssertEqual(String(decoding: request.body, as: UTF8.self), "hi")
+    }
+
+    func testEncodesChunkedResponseHeadAndChunks() {
+        let head = String(decoding: HTTPMessageCodec.encodeChunkedResponseHead(statusCode: 200, headers: ["content-type": "text/event-stream"]), as: UTF8.self)
+
+        XCTAssertTrue(head.contains("Transfer-Encoding: chunked\r\n"))
+        XCTAssertEqual(HTTPMessageCodec.encodeChunk(Data("hello".utf8)), Data("5\r\nhello\r\n".utf8))
+        XCTAssertEqual(HTTPMessageCodec.encodeChunk(Data()), Data())
+        XCTAssertEqual(HTTPMessageCodec.chunkedBodyTerminator, Data("0\r\n\r\n".utf8))
+    }
+
     func testReasonPhraseCoversGatewayStatuses() {
         let text502 = String(decoding: HTTPMessageCodec.encodeResponse(.init(statusCode: 502, headers: [:], body: Data())), as: UTF8.self)
         let text504 = String(decoding: HTTPMessageCodec.encodeResponse(.init(statusCode: 504, headers: [:], body: Data())), as: UTF8.self)

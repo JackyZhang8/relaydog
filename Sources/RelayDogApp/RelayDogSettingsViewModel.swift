@@ -205,6 +205,7 @@ public final class RelayDogAppModel: ObservableObject {
     private let debugClient: UpstreamDebugClient
     private let healthMonitor: HealthMonitor
     private var runtimeController: (any RelayDogRuntimeManaging)?
+    private var isStartingProxy = false
 
     public init(
         config: RelayDogConfig? = nil,
@@ -245,10 +246,11 @@ public final class RelayDogAppModel: ObservableObject {
         RelayDogSettingsViewModel(config: config, paths: paths)
     }
 
-    public func reload() {
+    public func reload() async {
         let store = ConfigStore(paths: paths)
         if let config = try? store.loadOrCreateDefault() {
             self.config = config
+            await restartProxyIfRunning()
         }
     }
 
@@ -281,6 +283,7 @@ public final class RelayDogAppModel: ObservableObject {
 
     public func setListenerPort(_ port: Int) async throws {
         guard (1...65_535).contains(port) else {
+            lastError = String(describing: RelayDogAppModelError.invalidListenerPort(port))
             throw RelayDogAppModelError.invalidListenerPort(port)
         }
         guard config.listener.port != port else {
@@ -349,9 +352,12 @@ public final class RelayDogAppModel: ObservableObject {
     }
 
     public func startProxyIfNeeded() async {
-        guard runtimeController == nil else {
+        guard runtimeController == nil, !isStartingProxy, config.listener.enabled else {
             return
         }
+
+        isStartingProxy = true
+        defer { isStartingProxy = false }
 
         let controller = runtimeFactory(config, paths)
 
@@ -374,7 +380,12 @@ public final class RelayDogAppModel: ObservableObject {
 
     private func saveConfig() throws {
         objectWillChange.send()
-        try ConfigStore(paths: paths).save(config)
+        do {
+            try ConfigStore(paths: paths).save(config)
+        } catch {
+            lastError = String(describing: error)
+            throw error
+        }
     }
 
     private func saveAndRestartIfRunning(startIfEnabled: Bool = false) async throws {

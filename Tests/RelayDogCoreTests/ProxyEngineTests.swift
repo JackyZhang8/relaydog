@@ -151,13 +151,15 @@ final class ProxyEngineTests: XCTestCase {
         }
 
         let written = await collector.chunks
-        XCTAssertEqual(written.count, 3)
+        XCTAssertEqual(written.count, 4)
         let head = String(decoding: written[0], as: UTF8.self)
         XCTAssertTrue(head.hasPrefix("HTTP/1.1 200 OK\r\n"))
         XCTAssertTrue(head.contains("content-type: text/event-stream\r\n"))
+        XCTAssertTrue(head.contains("Transfer-Encoding: chunked\r\n"))
         XCTAssertTrue(head.contains("Connection: close\r\n"))
-        XCTAssertEqual(written[1], Data("data: one\n\n".utf8))
-        XCTAssertEqual(written[2], Data("data: two\n\n".utf8))
+        XCTAssertEqual(written[1], HTTPMessageCodec.encodeChunk(Data("data: one\n\n".utf8)))
+        XCTAssertEqual(written[2], HTTPMessageCodec.encodeChunk(Data("data: two\n\n".utf8)))
+        XCTAssertEqual(written[3], HTTPMessageCodec.chunkedBodyTerminator)
     }
 
     func testRedactsSensitiveHeaders() {

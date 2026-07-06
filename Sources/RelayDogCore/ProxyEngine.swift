@@ -96,17 +96,19 @@ public struct ProxyEngine: Sendable {
             return
         }
 
-        await write(HTTPMessageCodec.encodeResponseHead(statusCode: streaming.statusCode, headers: streaming.headers))
+        await write(HTTPMessageCodec.encodeChunkedResponseHead(statusCode: streaming.statusCode, headers: streaming.headers))
 
+        let shouldCollectBody = eventLogger != nil
         var collectedBody = Data()
         var streamError: String?
         do {
             for try await chunk in streaming.body {
-                await write(chunk)
-                if collectedBody.count < Self.maxLoggedResponseBodyBytes {
+                await write(HTTPMessageCodec.encodeChunk(chunk))
+                if shouldCollectBody, collectedBody.count < Self.maxLoggedResponseBodyBytes {
                     collectedBody.append(chunk)
                 }
             }
+            await write(HTTPMessageCodec.chunkedBodyTerminator)
         } catch {
             streamError = String(describing: error)
         }
@@ -287,7 +289,7 @@ public struct ProxyEngine: Sendable {
             originalModel: forwarded.modelRewrite?.originalModel,
             mappedModel: forwarded.modelRewrite?.mappedModel,
             responseStatus: response?.statusCode,
-            responseHeaders: response?.headers ?? [:],
+            responseHeaders: Self.redactedHeaders(response?.headers ?? [:]),
             responseBody: response.map { String(decoding: $0.body, as: UTF8.self) },
             durationMilliseconds: max(0, Int(Date().timeIntervalSince(started) * 1000)),
             error: error
@@ -310,7 +312,7 @@ public struct ProxyEngine: Sendable {
         statisticsStore.record(.init(
             proto: proto,
             upstreamID: upstreamID,
-            succeeded: error == nil && (response?.statusCode ?? 599) < 500,
+            succeeded: error == nil && (response?.statusCode ?? 599) < 400,
             durationMilliseconds: max(0, Int(Date().timeIntervalSince(started) * 1000))
         ))
     }
