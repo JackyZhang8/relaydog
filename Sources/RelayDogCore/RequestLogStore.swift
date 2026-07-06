@@ -85,7 +85,7 @@ public struct GzipLogCompressor: LogCompressor {
     }
 }
 
-public struct RequestLogRecord: Codable, Equatable {
+public struct RequestLogRecord: Codable, Equatable, Sendable {
     public var id: String
     public var timestamp: Date
     public var proto: ProxyProtocol

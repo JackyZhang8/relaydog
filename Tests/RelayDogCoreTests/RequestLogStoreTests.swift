@@ -2,6 +2,10 @@ import XCTest
 @testable import RelayDogCore
 
 final class RequestLogStoreTests: XCTestCase {
+    func testRequestLogRecordIsSendable() {
+        assertSendable(RequestLogRecord.self)
+    }
+
     func testAppendsJsonLine() throws {
         let temp = try TemporaryDirectory()
         let store = RequestLogStore(logsDirectory: temp.url, maxFileBytes: 1024, retentionDays: 7, compressor: RecordingCompressor())
@@ -98,6 +102,8 @@ private final class RecordingCompressor: LogCompressor {
         try FileManager.default.removeItem(at: source)
     }
 }
+
+private func assertSendable<T: Sendable>(_ type: T.Type) {}
 
 private extension RequestLogRecord {
     static func fixture(id: String, path: String) -> RequestLogRecord {
