@@ -2078,7 +2078,7 @@ private struct UpstreamTestSheet: View {
             .frame(maxHeight: .infinity)
         }
         .padding(20)
-        .frame(width: 780, height: 620)
+        .frame(width: 780, height: 520)
         .onChange(of: selectedProtocol) { _ in
             reconcileModel()
         }
