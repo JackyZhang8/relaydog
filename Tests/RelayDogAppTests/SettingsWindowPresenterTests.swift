@@ -9,7 +9,6 @@ final class SettingsWindowPresenterTests: XCTestCase {
         let fakeWindow = FakeSettingsWindow()
         var createdWindowCount = 0
         var activationCount = 0
-        var scheduledCenter: (@MainActor () -> Void)?
         let presenter = RelayDogSettingsWindowPresenter(
             makeWindow: { _ in
                 createdWindowCount += 1
@@ -19,9 +18,6 @@ final class SettingsWindowPresenterTests: XCTestCase {
             activateApp: {
                 activationCount += 1
                 events.append("activate")
-            },
-            scheduleAfterPresentation: { action in
-                scheduledCenter = action
             }
         )
 
@@ -30,17 +26,12 @@ final class SettingsWindowPresenterTests: XCTestCase {
         }
 
         XCTAssertEqual(createdWindowCount, 1)
+        XCTAssertEqual(fakeWindow.prepareCount, 1)
         XCTAssertEqual(fakeWindow.centerCount, 1)
         XCTAssertEqual(fakeWindow.orderFrontCount, 1)
         XCTAssertEqual(fakeWindow.orderFrontRegardlessCount, 1)
         XCTAssertEqual(activationCount, 1)
-        XCTAssertNotNil(scheduledCenter)
-        XCTAssertEqual(events, ["activate", "makeKeyAndOrderFront", "orderFrontRegardless", "centerOnScreen"])
-
-        scheduledCenter?()
-
-        XCTAssertEqual(fakeWindow.centerCount, 2)
-        XCTAssertEqual(events, ["activate", "makeKeyAndOrderFront", "orderFrontRegardless", "centerOnScreen", "centerOnScreen"])
+        XCTAssertEqual(events, ["activate", "prepareForPresentation", "centerOnScreen", "makeKeyAndOrderFront", "orderFrontRegardless"])
     }
 
     func testShowReusesExistingSettingsWindow() {
@@ -48,7 +39,6 @@ final class SettingsWindowPresenterTests: XCTestCase {
         let fakeWindow = FakeSettingsWindow()
         fakeWindow.events = { events.append($0) }
         var createdWindowCount = 0
-        var scheduledCenters: [@MainActor () -> Void] = []
         let presenter = RelayDogSettingsWindowPresenter(
             makeWindow: { _ in
                 createdWindowCount += 1
@@ -56,9 +46,6 @@ final class SettingsWindowPresenterTests: XCTestCase {
             },
             activateApp: {
                 events.append("activate")
-            },
-            scheduleAfterPresentation: { action in
-                scheduledCenters.append(action)
             }
         )
 
@@ -71,11 +58,11 @@ final class SettingsWindowPresenterTests: XCTestCase {
         }
 
         XCTAssertEqual(createdWindowCount, 1)
+        XCTAssertEqual(fakeWindow.prepareCount, 2)
         XCTAssertEqual(fakeWindow.centerCount, 2)
         XCTAssertEqual(fakeWindow.orderFrontCount, 2)
         XCTAssertEqual(fakeWindow.orderFrontRegardlessCount, 2)
-        XCTAssertEqual(scheduledCenters.count, 2)
-        XCTAssertEqual(events, ["activate", "makeKeyAndOrderFront", "orderFrontRegardless", "centerOnScreen"])
+        XCTAssertEqual(events, ["activate", "prepareForPresentation", "centerOnScreen", "makeKeyAndOrderFront", "orderFrontRegardless"])
     }
 
     func testShowFromMenuDefersPresentationUntilScheduledActionRuns() {
@@ -127,6 +114,7 @@ final class SettingsWindowPresenterTests: XCTestCase {
 
         XCTAssertEqual(createdWindowCount, 1)
         XCTAssertNil(scheduledAction)
+        XCTAssertEqual(fakeWindow.prepareCount, 1)
         XCTAssertEqual(fakeWindow.centerCount, 1)
         XCTAssertEqual(fakeWindow.orderFrontCount, 1)
         XCTAssertEqual(fakeWindow.orderFrontRegardlessCount, 1)
@@ -136,9 +124,15 @@ final class SettingsWindowPresenterTests: XCTestCase {
 private final class FakeSettingsWindow: RelayDogSettingsWindowing {
     var isVisible = false
     var events: ((String) -> Void)?
+    private(set) var prepareCount = 0
     private(set) var centerCount = 0
     private(set) var orderFrontCount = 0
     private(set) var orderFrontRegardlessCount = 0
+
+    func prepareForPresentation() {
+        events?("prepareForPresentation")
+        prepareCount += 1
+    }
 
     func centerOnScreen() {
         events?("centerOnScreen")

@@ -1,15 +1,25 @@
 import AppKit
 import SwiftUI
 
+private let defaultSettingsContentSize = NSSize(width: 900, height: 660)
+
 @MainActor
 public protocol RelayDogSettingsWindowing: AnyObject {
     var isVisible: Bool { get }
+    func prepareForPresentation()
     func centerOnScreen()
     func makeKeyAndOrderFront(_ sender: Any?)
     func orderFrontRegardless()
 }
 
 extension NSWindow: RelayDogSettingsWindowing {
+    public func prepareForPresentation() {
+        if frame.width < minSize.width || frame.height < minSize.height {
+            setContentSize(defaultSettingsContentSize)
+        }
+        contentView?.layoutSubtreeIfNeeded()
+    }
+
     public func centerOnScreen() {
         guard let screen = screen ?? NSScreen.main else {
             center()
@@ -30,7 +40,6 @@ public final class RelayDogSettingsWindowPresenter: ObservableObject {
     private let makeWindow: @MainActor (AnyView) -> any RelayDogSettingsWindowing
     private let activateApp: @MainActor () -> Void
     private let scheduleFromMenu: (@escaping @MainActor () -> Void) -> Void
-    private let scheduleAfterPresentation: (@escaping @MainActor () -> Void) -> Void
 
     public init(
         makeWindow: @escaping @MainActor (AnyView) -> any RelayDogSettingsWindowing = { rootView in
@@ -43,18 +52,11 @@ public final class RelayDogSettingsWindowPresenter: ObservableObject {
             Task { @MainActor in
                 action()
             }
-        },
-        scheduleAfterPresentation: @escaping (@escaping @MainActor () -> Void) -> Void = { action in
-            Task { @MainActor in
-                await Task.yield()
-                action()
-            }
         }
     ) {
         self.makeWindow = makeWindow
         self.activateApp = activateApp
         self.scheduleFromMenu = scheduleFromMenu
-        self.scheduleAfterPresentation = scheduleAfterPresentation
     }
 
     public func show<Content: View>(@ViewBuilder content: () -> Content) {
@@ -85,7 +87,7 @@ public final class RelayDogSettingsWindowPresenter: ObservableObject {
     public static func makeDefaultWindow(rootView: AnyView) -> any RelayDogSettingsWindowing {
         let hostingController = NSHostingController(rootView: rootView)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 660),
+            contentRect: NSRect(origin: .zero, size: defaultSettingsContentSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -100,11 +102,9 @@ public final class RelayDogSettingsWindowPresenter: ObservableObject {
 
     private func present(_ window: any RelayDogSettingsWindowing) {
         activateApp()
+        window.prepareForPresentation()
+        window.centerOnScreen()
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
-        window.centerOnScreen()
-        scheduleAfterPresentation {
-            window.centerOnScreen()
-        }
     }
 }

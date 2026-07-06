@@ -64,6 +64,10 @@ enum RelayDogControlMetrics {
     static let clickableButtonsUsePointingHandCursor = true
     static let openURLIconUsesBorder = false
     static let openURLIconSize: CGFloat = 19
+    static let technicalValuesUseMonospacedFont = true
+    static let technicalInputsUseMonospacedFont = true
+    static let numericInputsUseMonospacedDigits = true
+    static let promptInputUsesMonospacedFont = false
     static let popupCloseButtonsUseBorder = false
     static let popupCloseButtonSize: CGFloat = 32
     static let upstreamTestPromptMinHeight: CGFloat = 42
@@ -82,12 +86,37 @@ enum RelayDogControlMetrics {
     }
 }
 
+private enum RelayDogTextFieldStyle {
+    case standard
+    case technical
+    case numeric
+
+    var font: Font {
+        switch self {
+        case .standard:
+            return .body
+        case .technical:
+            return .body.monospaced()
+        case .numeric:
+            return .body.monospacedDigit()
+        }
+    }
+}
+
 private extension View {
-    func relayDogTextFieldFrame() -> some View {
-        font(.body)
+    func relayDogTextFieldFrame(style: RelayDogTextFieldStyle = .standard) -> some View {
+        font(style.font)
             .padding(.horizontal, formHorizontalPadding)
             .padding(.vertical, formVerticalPadding)
             .background(FormFieldBackground())
+    }
+
+    func relayDogTechnicalValueFont(_ font: Font = .callout) -> some View {
+        self.font(font.monospaced())
+    }
+
+    func relayDogNumericValueFont(_ font: Font = .callout) -> some View {
+        self.font(font.monospacedDigit())
     }
 
     func relayDogMenuField(width: CGFloat? = nil) -> some View {
@@ -1085,10 +1114,9 @@ private struct EditableIntegerRow: View {
                 .frame(width: formLabelWidth, alignment: .leading)
             TextField("", text: $text)
                 .textFieldStyle(.plain)
-                .font(.body.monospacedDigit())
                 .multilineTextAlignment(.trailing)
                 .frame(width: 84)
-                .relayDogTextFieldFrame()
+                .relayDogTextFieldFrame(style: .numeric)
                 .onSubmit(commit)
             if !suffix.isEmpty {
                 Text(suffix)
@@ -1279,12 +1307,12 @@ private struct EditableUpstreamRow: View {
             }
 
             Text("w\(upstream.weight)")
-                .font(.callout.monospacedDigit())
+                .relayDogNumericValueFont()
                 .foregroundStyle(.secondary)
                 .frame(width: 48, alignment: .trailing)
 
             Text("\(upstream.timeoutSeconds)s")
-                .font(.callout.monospacedDigit())
+                .relayDogNumericValueFont()
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
 
@@ -1585,8 +1613,8 @@ private struct UpstreamBasicEditor: View {
         VStack(alignment: .leading, spacing: 4) {
             FormTextRow(title: t("名称", "Name", language: language), text: $name)
             ProtocolChoiceRow(language: language, selectedProtocol: $selectedProtocol)
-            FormTextRow(title: "Base URL", text: selectedBaseURL)
-            FormTextRow(title: "API Key", text: selectedAPIKey)
+            FormTextRow(title: "Base URL", text: selectedBaseURL, style: .technical)
+            FormTextRow(title: "API Key", text: selectedAPIKey, style: .technical)
             FormTextRow(title: t("备注", "Note", language: language), text: $note)
 
             StorageNoteCallout(text: t(
@@ -1719,7 +1747,7 @@ private struct UpstreamModelsEditor: View {
             HStack(spacing: 10) {
                 TextField(t("手工填写模型名称", "Enter model name manually", language: language), text: $manualModel)
                     .textFieldStyle(.plain)
-                    .relayDogTextFieldFrame()
+                    .relayDogTextFieldFrame(style: .technical)
                     .onSubmit(addManualModel)
 
                 Button {
@@ -1818,7 +1846,7 @@ private struct DraftModelMappingsEditor: View {
                     ForEach(sortedMappings, id: \.client) { mapping in
                         HStack(spacing: 10) {
                             Text(mapping.client)
-                                .font(.callout.monospaced())
+                                .relayDogTechnicalValueFont()
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1827,7 +1855,7 @@ private struct DraftModelMappingsEditor: View {
                                 .foregroundStyle(.secondary)
 
                             Text(mapping.upstream)
-                                .font(.callout.monospaced())
+                                .relayDogTechnicalValueFont()
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1862,11 +1890,11 @@ private struct DraftModelMappingsEditor: View {
             HStack(spacing: 10) {
                 TextField(t("客户端模型", "Client model", language: language), text: $clientModel)
                     .textFieldStyle(.plain)
-                    .relayDogTextFieldFrame()
+                    .relayDogTextFieldFrame(style: .technical)
 
                 TextField(t("上游模型", "Upstream model", language: language), text: $upstreamModel)
                     .textFieldStyle(.plain)
-                    .relayDogTextFieldFrame()
+                    .relayDogTextFieldFrame(style: .technical)
 
                 Button {
                     saveMapping()
@@ -1978,9 +2006,9 @@ private struct UpstreamConfigurationEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            FormTextRow(title: t("权重", "Weight", language: language), text: $weight)
+            FormTextRow(title: t("权重", "Weight", language: language), text: $weight, style: .numeric)
             Divider()
-            FormTextRow(title: t("超时秒数", "Timeout Seconds", language: language), text: $timeoutSeconds)
+            FormTextRow(title: t("超时秒数", "Timeout Seconds", language: language), text: $timeoutSeconds, style: .numeric)
             Divider()
             healthCheckRow
         }
@@ -1996,7 +2024,7 @@ private struct UpstreamConfigurationEditor: View {
 
                 TextField("", text: $healthCheckPath)
                     .textFieldStyle(.plain)
-                    .relayDogTextFieldFrame()
+                    .relayDogTextFieldFrame(style: .technical)
 
                 Button {
                     runHealthCheck()
@@ -2102,11 +2130,13 @@ private struct UpstreamTestSheet: View {
                         if selectedModels.isEmpty {
                             TextField(t("填写模型名称", "Enter model name", language: language), text: $selectedModel)
                                 .textFieldStyle(.plain)
-                                .relayDogTextFieldFrame()
+                                .relayDogTextFieldFrame(style: .technical)
                         } else {
                             Picker("", selection: $selectedModel) {
                                 ForEach(selectedModels, id: \.self) { model in
-                                    Text(model).tag(model)
+                                    Text(model)
+                                        .relayDogTechnicalValueFont()
+                                        .tag(model)
                                 }
                             }
                             .relayDogMenuField()
@@ -2252,6 +2282,7 @@ private struct FormTextRow: View {
     @Binding var text: String
     var prompt: String = ""
     var labelWidth: CGFloat = formLabelWidth
+    var style: RelayDogTextFieldStyle = .standard
 
     var body: some View {
         HStack(spacing: 12) {
@@ -2261,7 +2292,7 @@ private struct FormTextRow: View {
                 .frame(width: labelWidth, alignment: .leading)
             TextField(prompt, text: $text)
                 .textFieldStyle(.plain)
-                .relayDogTextFieldFrame()
+                .relayDogTextFieldFrame(style: style)
         }
         .padding(.vertical, 6)
     }
@@ -2321,7 +2352,7 @@ private struct ModelListView: View {
                     ForEach(models, id: \.self) { model in
                         HStack(spacing: 6) {
                             Text(model)
-                                .font(.callout.monospaced())
+                                .relayDogTechnicalValueFont()
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Spacer(minLength: 4)
@@ -2431,7 +2462,7 @@ private struct DebugTextBox: View {
 
             ScrollView {
                 Text(text.isEmpty ? "-" : text)
-                    .font(.caption.monospaced())
+                    .relayDogTechnicalValueFont(.caption)
                     .foregroundStyle(Color.white.opacity(0.92))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -2474,7 +2505,7 @@ private struct ProtocolRouteRow: View {
             Spacer()
 
             Text("\(enabledUpstreamCount) \(t("个中转站", "upstreams", language: language))")
-                .font(.callout.monospacedDigit())
+                .relayDogNumericValueFont()
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 10)
@@ -2510,12 +2541,12 @@ private struct UpstreamRowView: View {
             }
 
             Text("w\(row.weight)")
-                .font(.callout.monospacedDigit())
+                .relayDogNumericValueFont()
                 .foregroundStyle(.secondary)
                 .frame(width: 48, alignment: .trailing)
 
             Text(row.timeoutTitle)
-                .font(.callout.monospacedDigit())
+                .relayDogNumericValueFont()
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
         }
@@ -2573,7 +2604,7 @@ private struct ValueRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: formLabelWidth, alignment: .leading)
             Text(value)
-                .font(.callout.monospaced())
+                .relayDogTechnicalValueFont()
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
