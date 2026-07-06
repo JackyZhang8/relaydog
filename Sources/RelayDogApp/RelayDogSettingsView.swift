@@ -135,15 +135,18 @@ private extension View {
     }
 
     func relayDogClickableCursor(enabled: Bool = true) -> some View {
-        onHover { isHovering in
+        onContinuousHover { phase in
             guard enabled else {
                 return
             }
 
-            if isHovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
+            switch phase {
+            case .active:
+                if NSCursor.current != NSCursor.pointingHand {
+                    NSCursor.pointingHand.set()
+                }
+            case .ended:
+                NSCursor.arrow.set()
             }
         }
     }
@@ -512,11 +515,7 @@ private struct AboutSettingsPage: View {
             }
 
             SettingsPanel(viewModel.text("项目", "Project"), systemImage: "curlybraces") {
-                VStack(alignment: .leading, spacing: 12) {
-                    StorageNoteCallout(text: details.storageNote)
-
-                    OpenURLRow(title: "GitHub", value: "https://github.com/JackyZhang8/relaydog", url: URL(string: "https://github.com/JackyZhang8/relaydog")!)
-                }
+                OpenURLRow(title: "GitHub", value: "https://github.com/JackyZhang8/relaydog", url: URL(string: "https://github.com/JackyZhang8/relaydog")!)
             }
         }
     }
@@ -532,22 +531,21 @@ private struct AboutSettingsPage: View {
                     .shadow(color: RelayDogTheme.brandStart.opacity(0.3), radius: 8, x: 0, y: 3)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(details.title)
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(RelayDogTheme.brandGradient)
-                    Text(viewModel.headerTagline)
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(details.title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(RelayDogTheme.brandGradient)
+
+                Text(viewModel.headerTagline)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.secondary)
 
                 Text(details.description)
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1504,6 +1502,13 @@ private struct UpstreamBasicEditor: View {
             FormTextRow(title: "Base URL", text: selectedBaseURL)
             FormTextRow(title: "API Key", text: selectedAPIKey)
             FormTextRow(title: t("备注", "Note", language: language), text: $note)
+
+            StorageNoteCallout(text: t(
+                "当前配置和 API Key 会以明文保存到本机配置文件，请只在受信任的本机环境中使用。",
+                "Configuration and API keys are currently stored in plaintext on this Mac. Use RelayDog only in trusted local environments.",
+                language: language
+            ))
+            .padding(.top, 8)
         }
     }
 
