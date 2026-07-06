@@ -1,7 +1,7 @@
 name: Release
 
-# 打 tag（如 v1.0.0）即触发：构建通用二进制 -> 组装 .app -> 签名 -> 公证 -> 装订
-# -> 生成 update.json -> 发布 GitHub Release。
+# 打 tag（如 v1.0.0）或手动运行即触发：构建通用二进制 -> 组装 .app -> 签名
+# -> 公证 -> 装订 -> 生成 update.json -> 发布 GitHub Release。
 #
 # 需要在仓库 Settings -> Secrets and variables -> Actions 配置以下 secrets：
 #   MACOS_CERTIFICATE_P12        Developer ID Application 证书（.p12 文件 base64 编码）
@@ -12,6 +12,11 @@ name: Release
 #   NOTARY_API_KEY_P8            App Store Connect API 私钥（.p8 文件 base64 编码）
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, with or without leading v (e.g. 1.0.0)"
+        required: true
   push:
     tags:
       - "v*"
@@ -29,8 +34,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Derive version from tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Derive release version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            version="${INPUT_VERSION#v}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+
+          if [ -z "${version}" ]; then
+            echo "Release version must not be empty." >&2
+            exit 1
+          fi
+
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v${version}" >> "$GITHUB_ENV"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
 
       - name: Run tests
         run: swift test
@@ -147,7 +171,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           files: |
-            dist/${{ env.APP_NAME }}-${{ env.VERSION }}.zip
+            dist/${{ env.APP_NAME }}-${{ steps.version.outputs.version }}.zip
             dist/update.json
           generate_release_notes: true
