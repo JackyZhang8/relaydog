@@ -30,6 +30,7 @@ public final class RelayDogSettingsWindowPresenter: ObservableObject {
     private let makeWindow: @MainActor (AnyView) -> any RelayDogSettingsWindowing
     private let activateApp: @MainActor () -> Void
     private let scheduleFromMenu: (@escaping @MainActor () -> Void) -> Void
+    private let scheduleAfterPresentation: (@escaping @MainActor () -> Void) -> Void
 
     public init(
         makeWindow: @escaping @MainActor (AnyView) -> any RelayDogSettingsWindowing = { rootView in
@@ -42,22 +43,29 @@ public final class RelayDogSettingsWindowPresenter: ObservableObject {
             Task { @MainActor in
                 action()
             }
+        },
+        scheduleAfterPresentation: @escaping (@escaping @MainActor () -> Void) -> Void = { action in
+            Task { @MainActor in
+                await Task.yield()
+                action()
+            }
         }
     ) {
         self.makeWindow = makeWindow
         self.activateApp = activateApp
         self.scheduleFromMenu = scheduleFromMenu
+        self.scheduleAfterPresentation = scheduleAfterPresentation
     }
 
     public func show<Content: View>(@ViewBuilder content: () -> Content) {
         if let window {
-            present(window, shouldCenter: false)
+            present(window)
             return
         }
 
         let newWindow = makeWindow(AnyView(content()))
         window = newWindow
-        present(newWindow, shouldCenter: true)
+        present(newWindow)
     }
 
     public func showOnLaunch<Content: View>(@ViewBuilder content: () -> Content) {
@@ -90,11 +98,12 @@ public final class RelayDogSettingsWindowPresenter: ObservableObject {
         return window
     }
 
-    private func present(_ window: any RelayDogSettingsWindowing, shouldCenter: Bool) {
+    private func present(_ window: any RelayDogSettingsWindowing) {
         activateApp()
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
-        if shouldCenter {
+        window.centerOnScreen()
+        scheduleAfterPresentation {
             window.centerOnScreen()
         }
     }

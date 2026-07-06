@@ -9,6 +9,7 @@ final class SettingsWindowPresenterTests: XCTestCase {
         let fakeWindow = FakeSettingsWindow()
         var createdWindowCount = 0
         var activationCount = 0
+        var scheduledCenter: (@MainActor () -> Void)?
         let presenter = RelayDogSettingsWindowPresenter(
             makeWindow: { _ in
                 createdWindowCount += 1
@@ -18,6 +19,9 @@ final class SettingsWindowPresenterTests: XCTestCase {
             activateApp: {
                 activationCount += 1
                 events.append("activate")
+            },
+            scheduleAfterPresentation: { action in
+                scheduledCenter = action
             }
         )
 
@@ -30,7 +34,13 @@ final class SettingsWindowPresenterTests: XCTestCase {
         XCTAssertEqual(fakeWindow.orderFrontCount, 1)
         XCTAssertEqual(fakeWindow.orderFrontRegardlessCount, 1)
         XCTAssertEqual(activationCount, 1)
+        XCTAssertNotNil(scheduledCenter)
         XCTAssertEqual(events, ["activate", "makeKeyAndOrderFront", "orderFrontRegardless", "centerOnScreen"])
+
+        scheduledCenter?()
+
+        XCTAssertEqual(fakeWindow.centerCount, 2)
+        XCTAssertEqual(events, ["activate", "makeKeyAndOrderFront", "orderFrontRegardless", "centerOnScreen", "centerOnScreen"])
     }
 
     func testShowReusesExistingSettingsWindow() {
@@ -38,6 +48,7 @@ final class SettingsWindowPresenterTests: XCTestCase {
         let fakeWindow = FakeSettingsWindow()
         fakeWindow.events = { events.append($0) }
         var createdWindowCount = 0
+        var scheduledCenters: [@MainActor () -> Void] = []
         let presenter = RelayDogSettingsWindowPresenter(
             makeWindow: { _ in
                 createdWindowCount += 1
@@ -45,6 +56,9 @@ final class SettingsWindowPresenterTests: XCTestCase {
             },
             activateApp: {
                 events.append("activate")
+            },
+            scheduleAfterPresentation: { action in
+                scheduledCenters.append(action)
             }
         )
 
@@ -57,10 +71,11 @@ final class SettingsWindowPresenterTests: XCTestCase {
         }
 
         XCTAssertEqual(createdWindowCount, 1)
-        XCTAssertEqual(fakeWindow.centerCount, 1)
+        XCTAssertEqual(fakeWindow.centerCount, 2)
         XCTAssertEqual(fakeWindow.orderFrontCount, 2)
         XCTAssertEqual(fakeWindow.orderFrontRegardlessCount, 2)
-        XCTAssertEqual(events, ["activate", "makeKeyAndOrderFront", "orderFrontRegardless"])
+        XCTAssertEqual(scheduledCenters.count, 2)
+        XCTAssertEqual(events, ["activate", "makeKeyAndOrderFront", "orderFrontRegardless", "centerOnScreen"])
     }
 
     func testShowFromMenuDefersPresentationUntilScheduledActionRuns() {
