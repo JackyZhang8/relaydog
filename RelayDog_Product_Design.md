@@ -1,507 +1,548 @@
-# RelayDog 产品设计方案（macOS）
+# RelayDog 功能介绍与新手入门教程
 
-## 产品定位
+> 适用于 RelayDog `0.1.3` · macOS 13 及以上版本
 
-RelayDog 是一个 macOS 菜单栏 AI 中转工具。它在本机提供固定客户端地址，统一承接 OpenAI 兼容协议和 Claude / Anthropic 协议请求，并把请求路由到用户配置的多个上游中转站。
+RelayDog 是一款运行在 macOS 菜单栏中的本地 AI 中转工具。它可以把 Codex、Claude Code 和其他 AI 客户端的请求，转发到你自己配置的 OpenAI 兼容或 Claude 兼容服务。
 
-**RelayDog 默认透明转发，不做跨协议转换。**
+如果你经常更换 AI 服务商、拥有多个中转站，或者不想反复修改客户端地址，RelayDog 可以帮你把这些配置集中管理起来。
 
-除用户显式配置的 Header 覆盖、模型名称映射和请求日志外，RelayDog 不改写请求与响应。
+![RelayDog 设置界面](screenshot/app.png)
 
-设计原则：
+> 截图中的端口可能经过手动修改。RelayDog 的默认端口是 `18787`，请以你自己「概览」页面显示的地址为准。
 
-- OpenAI 兼容协议请求只进入 OpenAI 兼容上游池
-- Claude / Anthropic 协议请求只进入 Claude 兼容上游池
-- 两套协议独立路由，互不 fallback
-- 模型名称映射只在同协议内改写请求 JSON 的顶层 `model` 字段
-- 一个中转站可以同时启用 OpenAI 兼容和 Claude 兼容能力
-- 本地单端口按请求路径和 Header 自动识别协议
-- 配置、状态和日志全部保存在本机用户目录 `~/.relaydog`
+## 一句话理解 RelayDog
 
-## 核心目标
-
-用户只需要在客户端配置一次本机地址：
+你可以把 RelayDog 想象成一个本机“AI 快递中转站”：
 
 ```text
-OpenAI Base URL: http://127.0.0.1:18787/v1
-Claude Base URL: http://127.0.0.1:18787
+Codex / Claude Code / 其他 AI 客户端
+                    │
+                    ▼
+       RelayDog（固定的本机地址）
+                    │
+          ┌─────────┼─────────┐
+          ▼         ▼         ▼
+       上游 A     上游 B     上游 C
 ```
 
-之后无需修改 Codex、Claude Code 或其他客户端配置，只在 RelayDog 中切换中转站和路由。
+客户端只需要记住 RelayDog 的本机地址。以后增加服务、切换线路或更换模型，都可以在 RelayDog 中完成，不必逐个修改客户端。
 
-典型场景：
+## RelayDog 能做什么
 
-- Codex 请求 `http://127.0.0.1:18787/v1/responses`
-- RelayDog 识别为 OpenAI 兼容请求
-- RelayDog 按当前 OpenAI 路由选择上游
-- 如配置了模型映射，把客户端模型名 `gpt-5.5` 改写为上游真实模型名 `glm5.2`
-- 其余请求内容和响应内容透明转发
+### 1. 为客户端提供固定地址
 
-Claude Code 请求 `http://127.0.0.1:18787/v1/messages` 时，RelayDog 会识别为 Claude / Anthropic 请求，并只选择启用了 Claude 兼容能力的中转站。
+RelayDog 默认提供两个客户端地址：
 
-## 架构
+| 用途 | Base URL |
+| --- | --- |
+| OpenAI 兼容客户端 | `http://127.0.0.1:18787/v1` |
+| Claude / Anthropic 兼容客户端 | `http://127.0.0.1:18787` |
+
+两个地址使用同一个本地端口。RelayDog 会根据请求路径和 Header 自动判断请求属于哪种协议。
+
+### 2. 管理多个上游服务
+
+你可以添加多个官方服务、第三方 API 服务或自建网关，并为每个上游配置：
+
+- 名称和备注
+- OpenAI 兼容、Claude 兼容，或同时支持两者
+- Base URL 和 API Key
+- 启用或停用状态
+- 请求超时时间
+- 模型列表和模型映射
+- 健康检查与连接测试
+
+### 3. 快速切换路由
+
+你可以分别设置 OpenAI 请求和 Claude 请求使用哪个上游：
+
+- 选择「自动」，让 RelayDog 从可用上游中选择
+- 固定使用某一个上游
+- 在菜单栏中快速切换，不必打开完整设置窗口
+
+OpenAI 和 Claude 使用两套路由。OpenAI 请求不会被误发到只支持 Claude 的上游，反过来也一样。
+
+### 4. 管理和映射模型名称
+
+不同服务商可能给同一个模型使用不同名称。例如客户端发送的是 `gpt-5.5`，而上游要求的名称是 `glm5.2`，你可以配置：
 
 ```text
-macOS Menu Bar App
-├── Settings Window
-│   ├── Overview
-│   ├── Connections
-│   ├── Logs
-│   ├── System
-│   └── About
-├── Status Item Menu
-│   ├── Status and listener summary
-│   ├── Copy client URLs
-│   ├── Route switching
-│   └── Request log shortcuts
-├── Local Proxy Listener
-│   └── 127.0.0.1:18787
-│       ├── Protocol Detector
-│       ├── OpenAI Router
-│       │   ├── Model Mapping
-│       │   ├── Request Logger
-│       │   └── OpenAI-compatible Upstreams
-│       └── Claude Router
-│           ├── Request Logger
-│           └── Claude-compatible Upstreams
-└── Local Storage
-    └── ~/.relaydog
+客户端模型名：gpt-5.5
+上游模型名：glm5.2
 ```
 
-本地只监听一个端口。OpenAI Router 与 Claude Router 在内部完全独立，请求识别后只进入对应协议池。
+请求经过 RelayDog 时，顶层 `model` 字段会自动改成上游需要的名称，其他消息内容保持不变。
 
-## 启动体验
+### 5. 查看日志和排查问题
 
-RelayDog 是菜单栏应用，但启动时会自动打开设置窗口，避免用户只看到顶部菜单图标而误以为程序没有运行。
+请求失败时，可以临时开启请求日志，查看：
 
-启动行为：
+- RelayDog 识别出的协议
+- 实际选择的上游
+- 请求地址和状态码
+- 模型映射结果
+- 请求耗时与错误信息
 
-1. 初始化本机配置和运行目录
-2. 启动本地监听器
-3. 在 macOS 顶部菜单栏显示应用小图标
-4. 自动弹出 Settings 窗口
+请求日志默认关闭，建议只在排查问题时临时开启。
 
-用户关闭 Settings 窗口后，RelayDog 继续在菜单栏后台运行。再次点击顶部菜单图标可以打开快捷菜单。
+## 开始前先认识 5 个名词
 
-## 协议支持
+第一次配置 API 工具时，下面几个词最容易混淆。
 
-### 单端口协议识别
+### 客户端
 
-RelayDog 默认监听：
+客户端是你实际使用的 AI 工具，例如 Codex、Claude Code、聊天软件、编辑器插件或自己编写的程序。
+
+客户端负责发出请求，但它不一定直接连接模型服务。使用 RelayDog 后，客户端会先连接 RelayDog。
+
+### 上游
+
+上游是最终接收请求的 AI API 服务，例如官方 API、第三方中转站或自建网关。
+
+RelayDog 本身不提供模型，也不会赠送调用额度。你仍然需要准备可用的上游账号和 API Key。
+
+### Base URL
+
+Base URL 是 API 服务的基础地址，例如：
 
 ```text
-http://127.0.0.1:18787
+https://api.example.com/v1
 ```
 
-协议识别规则：
+添加上游时，应填写服务商文档提供的 API 地址，不要填写服务商的网站首页。
 
-- OpenAI 兼容路径：`/v1/chat/completions`、`/v1/responses`、`/v1/completions`、`/v1/embeddings`、`/v1/images`、`/v1/audio` 等
-- Claude / Anthropic 路径：`/v1/messages`、`/v1/complete` 等
-- Header 辅助识别：`anthropic-version`、`anthropic-beta`、`x-api-key` 倾向 Claude；`Authorization: Bearer ...` 倾向 OpenAI
-- 路径优先，Header 兜底
-- 仍无法判断时返回明确错误，不随机转发
+### API Key
 
-识别结果只决定进入哪个内部路由池，不做协议转换。
+API Key 相当于调用上游服务的密码，常见格式类似：
 
-### OpenAI 兼容路由
-
-- 默认原样转发 HTTP Body
-- 原样转发 SSE
-- 可覆盖 Authorization Header
-- 可选模型名称映射
-- 支持 Codex 和 OpenAI 兼容 SDK
-
-### Claude 兼容路由
-
-- 默认原样转发 Claude / Anthropic API
-- 原样转发 SSE
-- 不修改消息结构
-- 可覆盖 `x-api-key` Header
-- 支持 Claude Code
-
-## 中转站管理
-
-RelayDog 使用统一的中转站列表。每个中转站可以开启一个或多个协议能力：
-
-- OpenAI 兼容
-- Claude 兼容
-
-每个中转站字段：
-
-- 名称
-- 启用状态
-- 权重
-- 超时
-- 备注
-
-每个协议能力字段：
-
-- Base URL
-- API Key
-- Header 覆盖
-- 健康检查路径
-- 模型同步方式
-- 模型列表
-- 模型映射关系
-
-当前界面策略：
-
-- 中转站启用状态放在连接页列表中直接切换
-- 添加 / 编辑弹窗不再重复显示中转站启用开关
-- 协议类型由配置的协议能力判断，不再单独显示 “OpenAI 协议” 字段
-- 协议标签使用 “OpenAI兼容” 和 “Claude兼容”
-- 所有删除操作都需要确认
-
-示例配置：
-
-```json
-{
-  "listener": {
-    "host": "127.0.0.1",
-    "port": 18787,
-    "enabled": true
-  },
-  "upstreams": [
-    {
-      "id": "glm",
-      "name": "GLM Gateway",
-      "enabled": true,
-      "weight": 100,
-      "timeoutSeconds": 60,
-      "note": "",
-      "protocols": {
-        "openai": {
-          "enabled": true,
-          "baseURL": "https://example.com/openai/v1",
-          "apiKey": "sk-plain-text",
-          "headerOverrides": {},
-          "healthCheckPath": "/v1/models",
-          "modelSync": "manual",
-          "models": ["glm5.2"],
-          "modelMappings": {
-            "gpt-5.5": "glm5.2"
-          }
-        }
-      }
-    }
-  ],
-  "routing": {
-    "openai": {
-      "mode": "roundRobin",
-      "selectedUpstreamID": null
-    }
-  },
-  "globalModelMappings": {},
-  "requestLogging": {
-    "enabled": false,
-    "maxFileBytes": 52428800,
-    "retentionDays": 7,
-    "recordResponseBody": true
-  },
-  "language": "system"
-}
+```text
+sk-xxxxxxxxxxxxxxxx
 ```
 
-## 模型名称映射
+真实的上游 API Key 填在 RelayDog 的「连接」配置中。客户端连接 RelayDog 时，通常只需填写任意非空占位值。
 
-模型映射用于把客户端请求的模型名包装成上游真实模型名。
+### 模型名称
+
+模型名称告诉上游你要使用哪个模型，例如 `gpt-4.1`、`claude-sonnet-4` 或服务商自定义的名称。
+
+模型名称必须是上游实际支持的值。如果客户端使用的名称与上游不同，可以使用模型映射。
+
+## 三分钟完成第一次配置
+
+下面以添加一个 OpenAI 兼容上游为例。开始前，请准备好服务商提供的 Base URL、API Key 和至少一个模型名称。
+
+### 第一步：启动 RelayDog
+
+如果你下载的是发布版本，解压后打开 `RelayDog.app`。
+
+如果你从源码运行，请在项目目录执行：
+
+```bash
+./dev.sh
+```
+
+启动成功后：
+
+- RelayDog 设置窗口会自动打开
+- macOS 顶部菜单栏会出现 RelayDog 图标
+- 「概览」页面会显示本机客户端地址
+
+关闭设置窗口不会退出 RelayDog。它会继续在菜单栏后台运行。
+
+### 第二步：添加上游
+
+1. 打开「连接」页面。
+2. 点击添加中转站的按钮。
+3. 填写一个容易识别的名称，例如“我的 OpenAI 中转”。
+4. 启用「OpenAI 兼容」。
+5. 填写服务商提供的 Base URL。
+6. 填写真实的上游 API Key。
+7. 设置超时时间；不确定时保留默认值。
+8. 保存配置。
+
+如果服务商同时提供 Claude 兼容接口，也可以在同一个中转站中启用「Claude 兼容」，并单独填写对应地址和密钥。
+
+### 第三步：添加模型
+
+优先尝试「同步模型」。RelayDog 会请求上游的模型列表接口并读取可用模型。
+
+如果同步失败，但服务商文档明确给出了模型名称，可以改为手动添加。模型名需要完整填写，并注意大小写、连字符和版本号。
+
+例如：
+
+```text
+gpt-4.1
+gpt-4.1-mini
+text-embedding-3-small
+```
+
+### 第四步：测试上游
+
+在中转站编辑页面使用健康检查或调试功能。
+
+测试成功通常表示：
+
+- Base URL 可以访问
+- API Key 能够通过认证
+- 所选协议基本可用
+
+如果测试失败，不要急着配置客户端，先查看本教程后面的「常见问题」。
+
+### 第五步：配置客户端
+
+回到「概览」页面，复制对应地址。
+
+OpenAI 兼容客户端填写：
+
+```text
+Base URL: http://127.0.0.1:18787/v1
+API Key: relaydog
+```
+
+Claude / Anthropic 兼容客户端填写：
+
+```text
+Base URL: http://127.0.0.1:18787
+API Key: relaydog
+```
+
+这里的 `relaydog` 只是客户端要求的占位值。RelayDog 转发请求时，会使用你在上游配置中保存的真实 API Key。
+
+不同客户端的字段名称可能是 `Base URL`、`API Base`、`Endpoint` 或环境变量，但含义相同。请以对应客户端版本的设置说明为准。
+
+### 第六步：发起第一次请求
+
+在客户端发送一个简单请求，例如：
+
+```text
+请回复：RelayDog 连接成功
+```
+
+如果收到正常回复，说明以下链路已经打通：
+
+```text
+客户端 → RelayDog → 上游服务 → RelayDog → 客户端
+```
+
+## 如何选择协议
+
+配置错误的协议是新手最常遇到的问题之一。
+
+| 你使用的客户端或接口 | 应启用的上游能力 | 客户端地址 |
+| --- | --- | --- |
+| Codex、OpenAI SDK、OpenAI 兼容应用 | OpenAI 兼容 | `http://127.0.0.1:18787/v1` |
+| Claude Code、Anthropic SDK | Claude 兼容 | `http://127.0.0.1:18787` |
+| 同时支持两类接口的服务商 | 可以同时启用两种能力 | 根据客户端分别填写 |
+
+RelayDog 会识别协议并透明转发，但不会进行跨协议转换：
+
+- OpenAI 格式不会转换成 Claude 格式
+- Claude 格式不会转换成 OpenAI 格式
+- 模型映射只能改模型名，不能改变请求协议
+
+因此，上游必须真正支持客户端使用的协议。
+
+## Base URL 应该怎么填
+
+Base URL 是否包含 `/v1`，取决于服务商提供的接口格式。最可靠的做法是直接复制服务商文档中的 API Base URL。
+
+常见示例：
+
+```text
+https://api.example.com/v1
+https://gateway.example.com/openai/v1
+https://gateway.example.com/anthropic
+```
+
+不要填写：
+
+```text
+https://example.com                 # 服务商网站首页
+https://example.com/dashboard       # 控制台页面
+https://example.com/v1/models       # 具体接口，不是基础地址
+```
+
+如果出现 `404 Not Found`，优先检查 `/v1` 是否被遗漏或重复。例如错误地址可能会被拼成 `/v1/v1/models`。
+
+## 模型同步与模型映射
+
+### 什么时候使用模型同步
+
+当上游支持模型列表接口时，可以使用同步功能，减少手动输入错误。
+
+同步失败不一定代表聊天接口不可用。有些服务商关闭了模型列表接口，但仍允许调用指定模型。这时可以参考服务商文档手动添加模型。
+
+### 什么时候使用模型映射
+
+以下情况适合使用模型映射：
+
+- 客户端写死了一个模型名称
+- 你想在切换上游后继续使用相同的客户端配置
+- 上游对模型使用了别名
 
 示例：
 
-```json
-{
-  "modelMappings": {
-    "gpt-5.5": "glm5.2"
-  }
-}
-```
+| 客户端发送 | 上游实际需要 | 映射配置 |
+| --- | --- | --- |
+| `gpt-5.5` | `glm5.2` | `gpt-5.5` → `glm5.2` |
+| `claude-default` | `claude-sonnet-4` | `claude-default` → `claude-sonnet-4` |
 
-规则：
+映射只会修改请求 JSON 顶层的 `model` 字段，不会修改 Prompt、消息、工具调用、图片、文件或流式输出参数。
 
-- 只匹配完整模型名
-- 只改写请求体顶层 `model` 字段
-- 未命中映射时原样转发
-- 不改写消息、工具调用、图片、文件、stream 参数等字段
-- 只在同协议内生效
-- 不把 OpenAI 请求转换成 Claude 请求，也不把 Claude 请求转换成 OpenAI 请求
+## 认识 RelayDog 的五个页面
 
-## 路由模式
+### 概览
 
-配置层支持以下路由模式：
+适合日常查看和操作：
 
-- 单一模式
-- 轮询
-- 加权轮询
-- Failover
-- 最低延迟优先
+- 查看、复制 OpenAI Base URL
+- 查看、复制 Claude Base URL
+- 查看当前 OpenAI 路由
+- 查看当前 Claude 路由
+- 快速选择自动或固定上游
 
-路由选择只在当前请求识别出的协议池内进行。例如 Codex 请求被识别为 OpenAI 兼容协议后，只会在启用了 OpenAI 兼容能力的中转站中选择。
+### 连接
 
-当前菜单和概览页主要暴露“自动”和“固定中转站”两类日常选择。更细粒度策略保留在配置层和后续高级设置中扩展。
+用于管理上游服务：
 
-## 菜单栏
-
-菜单栏只显示小图标，不显示品牌文字，避免占用顶部菜单空间。小图标使用项目 Logo 的圆角版本，并去除边缘白边。
-
-点击小图标后显示快捷菜单：
-
-```text
-RelayDog Running
-Local Listener: 127.0.0.1:18787
-
-Open Settings
-Copy OpenAI Base URL
-Copy Claude Base URL
-
-OpenAI Route: Auto >
-Claude Route: Dual Gateway >
-
-Request Logs: Off >
-Reveal Log Folder
-
-Quit RelayDog
-```
-
-中文界面对应：
-
-```text
-RelayDog 正在运行
-本机监听: 127.0.0.1:18787
-
-打开设置
-复制 OpenAI 地址
-复制 Claude 地址
-
-OpenAI 路由: 自动 >
-Claude 路由: Dual Gateway >
-
-请求日志: 关闭 >
-显示日志文件夹
-
-退出 RelayDog
-```
-
-菜单设计原则：
-
-- 顶部先说明程序正在运行和监听地址
-- “打开设置”放在最高频操作区
-- 复制客户端地址放在菜单里，降低首次配置成本
-- 路由切换保留为子菜单
-- 请求日志只保留开关和日志目录，不再提供独立 Viewer 入口
-- 不放暂停代理按钮，避免误触导致客户端请求失败
-- 不放新增中转站、模型同步、健康统计等低频配置入口
-
-## 设置窗口
-
-Settings 是主要配置中心，使用顶部选项卡组织。
-
-```text
-Settings
-├── 概览 / Overview
-├── 连接 / Connections
-├── 日志 / Logs
-├── 系统 / System
-└── 关于 / About
-```
-
-### 概览 / Overview
-
-用于快速复制客户端地址和确认路由。
-
-- 客户端地址
-  - OpenAI Base URL：`http://127.0.0.1:18787/v1`
-  - Claude Base URL：`http://127.0.0.1:18787`
-- 路由
-  - 当前 OpenAI 路由
-  - 当前 Claude 路由
-  - 每个协议池的可用中转站
-
-说明：
-
-- 不再显示 “本机统一地址”
-- 不再显示 OpenAI / Claude 统计卡片
-- 不再显示本机数据板块
-
-### 连接 / Connections
-
-管理中转站列表和协议能力。
-
-- 新增 / 编辑 / 删除中转站
-- 在列表中直接启用 / 禁用中转站
-- 配置权重、超时、备注
-- 配置 OpenAI 兼容能力
-- 配置 Claude 兼容能力
-- 同步或手动维护模型列表
+- 添加、编辑和删除中转站
+- 启用或停用中转站
+- 配置协议、Base URL 和 API Key
+- 同步或手动维护模型
 - 配置模型映射
-- 在弹窗内测试中转站
+- 测试上游连接
 
-测试中转站页面采用偏终端风格的深色请求 / 响应区域，便于查看原始调试内容。
+### 日志
 
-### 日志 / Logs
+用于排查请求问题：
 
-管理请求日志。
+- 开启或关闭请求日志
+- 设置单个日志文件的最大大小
+- 设置日志保留天数
+- 控制是否记录响应正文
+- 打开本地日志目录
 
-- 开启 / 关闭请求日志
-- 配置最大文件大小
-- 配置日志保留天数
-- 配置是否记录响应 Body
-- 打开日志文件夹
+### 系统
 
-健康与统计板块已从日志页移除。
+用于管理 RelayDog 本身：
 
-### 系统 / System
+- 切换中文、English 或跟随系统语言
+- 修改本地监听 Host 和 Port
+- 启用或关闭本地监听
+- 查看配置文件和状态文件位置
 
-管理应用级设置。
+一般用户建议保持默认 Host `127.0.0.1`。将 Host 修改为 `0.0.0.0` 可能让局域网中的其他设备访问 RelayDog，会增加安全风险。
 
-- 界面语言：跟随系统 / 中文 / English
-- 本地监听 Host
-- 本地监听 Port
-- 本地监听启用状态
-- 数据目录
-- 配置文件
-- 状态文件
+### 关于
 
-### 关于 / About
+用于查看：
 
-展示项目介绍、能力摘要、存储说明和项目链接。
+- 当前版本
+- 项目说明
+- 本地存储提醒
+- GitHub 项目链接
+- 软件更新
 
-内容包括：
+## 日常使用
 
-- 项目描述
-- 单一本地端点
-- OpenAI 与 Claude 路由
-- 按中转站配置模型和映射
-- 请求日志与调试测试
-- 本地明文存储提醒
-- GitHub 链接
+### 快速切换上游
 
-## 状态定义
+1. 点击 macOS 顶部菜单栏中的 RelayDog 图标。
+2. 找到 OpenAI 路由或 Claude 路由。
+3. 选择「自动」或指定中转站。
+4. 重新在客户端发起请求。
 
-- `Running` / `正在运行`：本地监听正常，并且启用的协议有可用中转站
-- `Degraded` / `异常`：应用仍在运行，但某个启用协议没有可用中转站、健康检查失败或最近请求失败
-- `Offline` / `离线`：本地监听关闭、未运行或端口绑定失败
+两种协议的路由互相独立。切换 OpenAI 路由不会影响 Claude Code。
 
-状态会显示在顶部菜单的第一行。
+### 暂时停用某个上游
 
-## 常用工作流
+在「连接」页面关闭该中转站的启用开关。RelayDog 不会再把新请求发送给它，但配置仍然保留，之后可以重新启用。
 
-### 首次配置
+### 修改监听端口
 
-1. 执行 `./dev.sh` 启动菜单栏应用
-2. Settings 自动弹出
-3. 进入 “连接 / Connections”
-4. 添加中转站
-5. 配置 OpenAI 兼容或 Claude 兼容能力
-6. 填写 Base URL 与 API Key
-7. 同步模型或手动填写模型
-8. 如需包装客户端模型名，添加模型映射
-9. 回到 “概览 / Overview” 或顶部菜单复制客户端地址
-10. 把地址填入 Codex、Claude Code 或其他客户端
+如果默认端口 `18787` 被其他程序占用，可以在「系统」页面修改端口。
 
-### 日常切换
+修改后还需要同步更新客户端中的 Base URL。例如端口改为 `18888`：
 
-1. 点击 macOS 顶部菜单栏小图标
-2. 在 `OpenAI Route` 子菜单切换 OpenAI 兼容请求的中转站
-3. 在 `Claude Route` 子菜单切换 Claude 请求的中转站
-4. 选择 `Auto` 时按当前路由配置自动选择
+```text
+OpenAI: http://127.0.0.1:18888/v1
+Claude: http://127.0.0.1:18888
+```
 
-### 调试请求
+最简单的做法是回到「概览」页面重新复制地址。
 
-1. 点击顶部菜单小图标
-2. 在 `Request Logs` 中开启请求日志
-3. 重新发起 Codex 或 Claude Code 请求
-4. 点击 `Reveal Log Folder` 打开日志目录
-5. 查看 JSON Lines 日志中的 Header、Body、模型映射、上游响应和错误
-6. 调试完成后关闭请求日志
+## 状态说明
 
-## 本地数据目录
+| 状态 | 含义 | 建议操作 |
+| --- | --- | --- |
+| 正在运行 / Running | 本地监听正常 | 可以正常使用 |
+| 异常 / Degraded | 应用仍在运行，但部分上游不可用或最近请求失败 | 检查上游、网络和日志 |
+| 离线 / Offline | 本地监听未启动、被关闭或端口绑定失败 | 检查「系统」中的监听设置 |
 
-RelayDog 启动时在用户目录下创建：
+## 常见问题与排查方法
+
+### 客户端提示连接失败
+
+按顺序检查：
+
+1. macOS 菜单栏中是否有 RelayDog 图标。
+2. RelayDog 状态是否为「正在运行」。
+3. 客户端地址是否来自当前「概览」页面。
+4. 客户端地址是否错误使用了 `https://`；本机默认地址是 `http://`。
+5. 端口是否被修改或被其他程序占用。
+
+### 返回 401 或 403
+
+这通常是认证问题：
+
+- API Key 填写错误、过期或余额不足
+- Key 没有调用目标模型的权限
+- 上游要求特殊 Header
+- 把客户端占位 Key 误当成真实 Key 填进了上游配置
+
+请先在「连接」中检查真实的上游 API Key，再使用测试功能验证。
+
+### 返回 404
+
+这通常是 Base URL 路径错误：
+
+- 缺少 `/v1`
+- 重复填写 `/v1`
+- 填写了控制台地址或具体接口地址
+- 上游并不支持当前协议
+
+请对照服务商 API 文档，不要只复制浏览器地址栏中的网站地址。
+
+### 提示模型不存在
+
+检查：
+
+- 模型名称是否完整且大小写正确
+- 当前 API Key 是否有模型权限
+- 当前路由选择的上游是否支持该模型
+- 是否需要配置模型映射
+- 模型同步结果是否已经过期
+
+### Claude Code 能用，但 Codex 不能用
+
+两者使用不同协议。请确认该中转站同时启用了 Claude 兼容和 OpenAI 兼容能力，并分别填写了正确的地址与密钥。
+
+如果服务商只支持 Claude 协议，它不能直接接收 Codex 的 OpenAI 格式请求；RelayDog 不负责协议转换。
+
+### 模型列表同步失败
+
+可能原因包括：
+
+- 上游没有提供模型列表接口
+- 健康检查或模型列表路径不正确
+- API Key 无权读取模型列表
+- Base URL 拼接错误
+
+如果聊天接口本身可用，可以根据服务商文档手动添加模型。
+
+### 请求很慢或超时
+
+可以检查：
+
+- 上游服务是否拥堵
+- 网络是否可以访问上游地址
+- 超时时间是否设置得过短
+- 当前模型是否响应较慢
+- 自动路由是否选择了延迟较高的上游
+
+### 如何查看详细错误
+
+1. 打开「日志」页面。
+2. 临时开启请求日志。
+3. 在客户端重新发起一次失败请求。
+4. 打开日志文件夹，查看最新的 `.jsonl` 文件。
+5. 排查完成后关闭请求日志。
+
+分享日志给他人前，务必删除 API Key、Prompt、响应正文和其他敏感信息。
+
+## 本地数据与隐私
+
+RelayDog 的数据默认保存在：
 
 ```text
 ~/.relaydog/
 ├── config.json
 ├── logs/
 │   ├── request-current.jsonl
-│   ├── request-2026-07-04-001.jsonl.gz
-│   └── ...
+│   └── 已轮转的压缩日志
 └── state.json
 ```
 
-`config.json` 明文保存：
-
-- 本地监听配置
-- 中转站配置
-- OpenAI / Claude 协议能力配置
-- API Key
-- 路由模式
-- 模型列表
-- 模型名称映射
-- 请求日志设置
-- 界面语言
-
-`state.json` 保存运行状态缓存，例如最近选择的节点、健康检查结果、统计快照等。
-
-## 请求日志
-
-请求日志默认关闭。开启后，RelayDog 会记录真实请求数据，便于本机排查客户端实际发送了什么。
-
-记录内容：
-
-- 时间
-- 协议类型
-- 请求方法与路径
-- 选中的上游节点
-- 上游 URL
-- 请求 Header
-- 请求 Body
-- 模型映射前后的模型名
-- 响应状态码
-- 响应 Header
-- 响应 Body 或 SSE 原始事件流
-- 耗时
-- 错误信息
-
-日志格式：
-
-- JSON Lines，一行一个请求记录
-- 当前写入文件保持未压缩，便于实时查看
-- 轮转后的旧日志使用 gzip 压缩
-- 默认单文件 50 MB
-- 默认保留 7 天
-- 日志保存在 `~/.relaydog/logs`
+- `config.json`：保存监听、上游、API Key、模型和路由配置
+- `logs/`：保存你主动开启的请求日志
+- `state.json`：保存健康状态、统计和部分运行状态
 
 安全提醒：
 
-- 请求日志可能包含 API Key、Header、Prompt、响应正文等敏感信息
-- 默认关闭
-- 仅建议在本机调试时临时开启
+- 上游 API Key 当前以明文形式保存在 `config.json` 中
+- 不要把 `~/.relaydog` 上传到公开仓库或发送给陌生人
+- 请求日志可能包含 Header、Prompt、响应正文和密钥等敏感内容
+- RelayDog 不会主动上传你的配置、日志或请求数据
+- 默认只监听 `127.0.0.1`，建议普通用户不要修改为公网或局域网地址
 
-## 安全
+## RelayDog 不会做什么
 
-- 默认仅监听 `127.0.0.1`
-- API Key 明文存储于 `~/.relaydog/config.json`
-- 不上传配置、日志或请求数据
-- 请求日志默认关闭
-- 开启请求日志后会记录真实 Header、Body 和响应内容
-- 当前产品定位为本机个人工具，不提供配置加密和日志脱敏
+为了避免误解，需要明确以下边界：
 
-## 技术栈
+- RelayDog 不提供模型或免费额度
+- RelayDog 不代替你注册上游服务
+- RelayDog 不会把 OpenAI 请求转换成 Claude 请求
+- RelayDog 不会把 Claude 请求转换成 OpenAI 请求
+- RelayDog 默认不会修改 Prompt 和响应内容
+- RelayDog 无法解决上游账号欠费、模型权限不足或服务商故障
 
-- Swift 6.1
-- SwiftUI
-- AppKit / NSStatusItem
-- Network.framework
-- URLSession
-- async/await
+它的主要工作是统一客户端入口、管理上游配置、选择路由、替换认证信息，并在需要时映射模型名称。
+
+## 从源码运行与测试
+
+环境要求：
+
+- macOS 13 或更高版本
+- Xcode / Swift 6.1 工具链
 - Swift Package Manager
 
-## 产品原则
+运行菜单栏应用：
 
-- 默认透明代理
-- 不做跨协议转换
-- 显式配置才改写模型名
-- 本机优先，不依赖云端服务
-- 菜单栏用于高频操作，Settings 用于配置管理
-- 面向 Codex、Claude Code 与 OpenAI 兼容生态
-- 本地可观测，方便排查真实请求数据
+```bash
+./dev.sh
+```
+
+只运行代理守护进程：
+
+```bash
+./dev.sh daemon
+```
+
+构建：
+
+```bash
+swift build --product RelayDogMenuBar
+```
+
+运行测试：
+
+```bash
+swift test
+```
+
+## 推荐的新手配置
+
+如果你不确定各项参数应该怎么设置，可以先使用下面这套安全、简单的方案：
+
+| 设置 | 推荐值 |
+| --- | --- |
+| Host | `127.0.0.1` |
+| Port | `18787` |
+| 路由 | 自动，或固定到唯一上游 |
+| 超时 | 保持默认值 |
+| 模型 | 优先同步，失败后手动填写 |
+| 模型映射 | 确实遇到模型名不一致时再配置 |
+| 请求日志 | 默认关闭，排查问题时临时开启 |
+| 响应正文日志 | 涉及隐私内容时关闭 |
+
+完成第一次配置后，你平时通常只需要做两件事：在菜单栏切换上游，以及在出现问题时临时查看日志。

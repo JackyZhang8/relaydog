@@ -122,7 +122,7 @@ swift build --product RelayDogMenuBar
 swift test
 ```
 
-更多产品设计与架构说明请参阅 [RelayDog_Product_Design.md](RelayDog_Product_Design.md)。
+第一次使用？请参阅 [RelayDog 功能介绍与新手入门教程](RelayDog_Product_Design.md)，了解上游配置、客户端接入、模型映射和常见问题排查。
 
 ### 贡献
 感谢 yang提供的logo设计
