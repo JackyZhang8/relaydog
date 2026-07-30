@@ -1,216 +1,170 @@
-# RelayDog
+<div align="center">
+  <img src="logo.png" alt="RelayDog Logo" width="160" />
 
-RelayDog is a local macOS menu bar relay for AI clients. It exposes one local listener, routes OpenAI-compatible and Claude-compatible requests to configured upstream gateways, and keeps configuration and logs on your Mac.
+  # RelayDog
 
-RelayDog 是一个 macOS 菜单栏 AI 中转工具。它在本机提供固定客户端地址，把 OpenAI 兼容和 Claude 兼容请求路由到你配置的多个中转站，配置与日志都保存在本机。
+  **本机 AI 模型中转站：一个客户端地址，连接多个上游模型服务。**
 
-## 中文说明
+  A local macOS menu bar relay for OpenAI-compatible and Claude-compatible AI clients.
 
-### 功能特性
+  [![Version](https://img.shields.io/badge/version-0.1.3-4C8DFF)](https://github.com/JackyZhang8/relaydog/releases)
+  ![macOS](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)
+  ![Swift](https://img.shields.io/badge/Swift-6.1-F05138?logo=swift&logoColor=white)
+</div>
 
-- 单一本地监听地址：默认 `127.0.0.1:18787`
-- OpenAI 兼容客户端地址：`http://127.0.0.1:18787/v1`
-- Claude / Anthropic 客户端地址：`http://127.0.0.1:18787`
-- 按请求路径和 Header 自动识别 OpenAI 兼容或 Claude 兼容协议
-- 多中转站管理，支持启用 / 禁用、权重、超时、备注
-- 每个中转站可分别配置 OpenAI 兼容和 Claude 兼容能力
-- 支持模型列表、模型同步和模型名称映射
-- 支持请求日志，便于排查客户端真实请求
-- macOS 顶部菜单快捷操作：打开设置、复制客户端地址、切换路由、开启日志
-- 设置页支持中文 / English / 跟随系统
+---
 
-### 快速启动
+RelayDog 是一款常驻 macOS 菜单栏的本地 AI 请求中转工具。它为 Codex、Claude Code 及其他兼容客户端提供固定的本机地址，并将请求转发到你配置的多个 OpenAI 或 Claude 兼容上游。配置、路由状态和请求日志均保存在本机。
 
-环境要求：
+## 软件截图
+
+<div align="center">
+  <img src="screenshot/app.png" alt="RelayDog 设置界面" width="900" />
+</div>
+
+## 核心能力
+
+- **统一客户端入口**：默认监听 `127.0.0.1:18787`，无需在不同上游地址之间反复切换。
+- **双协议兼容**：根据请求路径与 Header 自动识别 OpenAI 兼容或 Claude / Anthropic 兼容请求。
+- **多上游路由**：集中管理多个中转站，支持启用状态、权重、超时、备注与协议能力配置。
+- **模型管理**：支持同步模型列表、手动维护模型，以及客户端模型名到上游模型名的映射。
+- **运行状态与排障**：提供健康检查、请求统计和可选的本地请求日志。
+- **原生菜单栏体验**：快速打开设置、复制客户端地址、切换路由和控制日志。
+- **中英双语界面**：支持中文、English 及跟随系统语言。
+- **数据留在本机**：RelayDog 不会主动上传你的配置、日志或请求内容。
+
+## 快速开始
+
+### 下载安装
+
+前往 [GitHub Releases](https://github.com/JackyZhang8/relaydog/releases) 下载适合当前 Mac 架构的版本。
+
+系统要求：
 
 - macOS 13 或更高版本
-- Xcode / Swift 工具链
-- Swift Package Manager
+- Apple Silicon（arm64）或 Intel（x86_64）Mac
 
-启动菜单栏应用：
+### 从源码运行
+
+需要安装 Xcode / Swift 6.1 工具链，然后执行：
 
 ```bash
+git clone https://github.com/JackyZhang8/relaydog.git
+cd relaydog
 ./dev.sh
 ```
 
-启动后 Settings 窗口会自动弹出，同时 macOS 顶部菜单栏会显示 RelayDog 小图标。
+启动后会打开设置窗口，并在 macOS 菜单栏显示 RelayDog 图标。
 
-只启动本地代理守护进程：
+仅启动本地代理守护进程：
 
 ```bash
 ./dev.sh daemon
 ```
 
-手动构建：
+## 使用方法
 
-```bash
-swift build --product RelayDogMenuBar
-```
+1. 打开 RelayDog 设置，在「连接」页面添加一个上游服务。
+2. 选择该上游支持 OpenAI 兼容协议、Claude 兼容协议，或同时支持两者。
+3. 填写上游 `Base URL` 和 `API Key`。
+4. 同步或手动添加模型；如有需要，再配置模型名称映射。
+5. 返回「概览」页面，复制对应的客户端地址。
+6. 将地址填入 Codex、Claude Code 或其他兼容客户端。
 
-运行测试：
+## 客户端配置
 
-```bash
-swift test
-```
+| 客户端类型 | Base URL | API Key |
+| --- | --- | --- |
+| OpenAI 兼容 | `http://127.0.0.1:18787/v1` | 填写任意占位值；真实 Key 由 RelayDog 的上游配置提供 |
+| Claude / Anthropic 兼容 | `http://127.0.0.1:18787` | 填写任意占位值；真实 Key 由 RelayDog 的上游配置提供 |
 
-### 客户端配置
+> 如果你修改了监听地址或端口，请以 RelayDog「概览」页面显示的地址为准。
 
-OpenAI 兼容客户端：
+## 本地数据与隐私
 
-```text
-Base URL: http://127.0.0.1:18787/v1
-API Key: 任意占位值，真实 Key 由 RelayDog 的上游配置决定
-```
-
-Claude Code / Anthropic 兼容客户端：
-
-```text
-Base URL: http://127.0.0.1:18787
-API Key: 任意占位值，真实 Key 由 RelayDog 的上游配置决定
-```
-
-### 使用流程
-
-1. 执行 `./dev.sh`
-2. 在 Settings 的 “连接” 页面添加中转站
-3. 配置 OpenAI 兼容或 Claude 兼容能力
-4. 填写上游 Base URL 和 API Key
-5. 按需同步模型或手动填写模型
-6. 如需模型别名，配置模型映射
-7. 在 “概览” 页面或顶部菜单复制客户端地址
-8. 在 Codex、Claude Code 或其他客户端中使用本机地址
-
-### 本地数据
-
-RelayDog 使用以下本机目录：
+RelayDog 默认将数据保存在：
 
 ```text
 ~/.relaydog/
-├── config.json
-├── logs/
-└── state.json
+├── config.json    # 上游、模型和路由配置
+├── logs/          # 请求日志（默认关闭）
+└── state.json     # 本地运行状态
 ```
 
-注意：
+请注意：
 
-- `config.json` 会明文保存上游 API Key
-- 请求日志默认关闭
-- 开启请求日志后，日志可能包含 Header、Prompt、响应正文和 API Key 等敏感信息
-- RelayDog 不上传配置、日志或请求数据
+- `config.json` 当前会明文保存上游 API Key，请妥善保护该文件。
+- 请求日志默认关闭；开启后可能包含 Header、Prompt、响应正文和 API Key 等敏感信息。
+- 分享日志前，请先检查并移除密钥和业务数据。
 
-## English
+## 开发
 
-### Features
+主要模块：
 
-- Single local listener: `127.0.0.1:18787` by default
-- OpenAI-compatible client URL: `http://127.0.0.1:18787/v1`
-- Claude / Anthropic-compatible client URL: `http://127.0.0.1:18787`
-- Automatic protocol detection by request path and headers
-- Multiple upstream gateways with enable toggles, weights, timeouts, and notes
-- Per-upstream OpenAI-compatible and Claude-compatible capabilities
-- Model lists, model sync, and model name mapping
-- Request logs for local debugging
-- macOS menu bar shortcuts for settings, client URL copy, route switching, and logs
+- `RelayDogMenuBar`：macOS 菜单栏应用入口
+- `RelayDogApp`：设置窗口与菜单界面
+- `RelayDogCore`：代理、协议识别、路由、配置、健康检查和日志
+- `relaydogd`：独立本地代理守护进程
+
+常用命令：
+
+```bash
+# 运行菜单栏应用
+./dev.sh
+
+# 运行守护进程
+./dev.sh daemon
+
+# 构建
+swift build --product RelayDogMenuBar
+
+# 测试
+swift test
+```
+
+更多产品设计与架构说明请参阅 [RelayDog_Product_Design.md](RelayDog_Product_Design.md)。
+
+### 贡献
+感谢 yang提供的logo设计
+
+<details>
+
+
+<summary><strong>English</strong></summary>
+
+## About RelayDog
+
+RelayDog is a local macOS menu bar relay for AI clients. It exposes stable local endpoints and routes OpenAI-compatible and Claude-compatible requests to your configured upstream gateways. Configuration, routing state, and optional request logs stay on your Mac.
+
+### Highlights
+
+- One local endpoint for multiple upstream AI gateways
+- Automatic OpenAI / Claude protocol detection
+- Weighted routing, timeout settings, health checks, and upstream enable toggles
+- Model synchronization and model-name mapping
+- Local request statistics and optional diagnostic logs
+- Native macOS menu bar controls
 - Chinese, English, and system language modes
 
-### Quick Start
+### Client endpoints
 
-Requirements:
+| Client type | Base URL |
+| --- | --- |
+| OpenAI-compatible | `http://127.0.0.1:18787/v1` |
+| Claude / Anthropic-compatible | `http://127.0.0.1:18787` |
 
-- macOS 13 or later
-- Xcode / Swift toolchain
-- Swift Package Manager
+Use any placeholder API key in the client. RelayDog injects the actual key configured for the selected upstream.
 
-Run the menu bar app:
+### Run from source
+
+RelayDog requires macOS 13 or later and the Swift 6.1 toolchain.
 
 ```bash
+git clone https://github.com/JackyZhang8/relaydog.git
+cd relaydog
 ./dev.sh
 ```
 
-RelayDog opens the Settings window on launch and keeps a small icon in the macOS menu bar.
+Download packaged builds from [GitHub Releases](https://github.com/JackyZhang8/relaydog/releases).
 
-Run only the local proxy daemon:
-
-```bash
-./dev.sh daemon
-```
-
-Build manually:
-
-```bash
-swift build --product RelayDogMenuBar
-```
-
-Run tests:
-
-```bash
-swift test
-```
-
-### Client Configuration
-
-OpenAI-compatible clients:
-
-```text
-Base URL: http://127.0.0.1:18787/v1
-API Key: any placeholder value; the real key is configured per upstream in RelayDog
-```
-
-Claude Code / Anthropic-compatible clients:
-
-```text
-Base URL: http://127.0.0.1:18787
-API Key: any placeholder value; the real key is configured per upstream in RelayDog
-```
-
-### Typical Workflow
-
-1. Run `./dev.sh`
-2. Open the Connections tab in Settings
-3. Add an upstream gateway
-4. Configure OpenAI-compatible or Claude-compatible capability
-5. Fill in the upstream Base URL and API Key
-6. Sync models or enter model names manually
-7. Add model mappings if the client model name should differ from the upstream model name
-8. Copy the client URL from Overview or the menu bar
-9. Use the local URL in Codex, Claude Code, or another compatible client
-
-### Local Data
-
-RelayDog stores local data under:
-
-```text
-~/.relaydog/
-├── config.json
-├── logs/
-└── state.json
-```
-
-Security notes:
-
-- `config.json` stores upstream API keys in plaintext
-- Request logging is disabled by default
-- When enabled, request logs may contain headers, prompts, response bodies, and API keys
-- RelayDog does not upload your configuration, logs, or request data
-
-## Development
-
-Main targets:
-
-- `RelayDogMenuBar`: macOS menu bar app
-- `relaydogd`: local proxy daemon
-- `RelayDogApp`: settings and menu UI
-- `RelayDogCore`: proxy, routing, config, logging, and protocol logic
-
-Useful commands:
-
-```bash
-./dev.sh
-./dev.sh daemon
-swift build --product RelayDogMenuBar
-swift test
-```
-
-## Design Notes
-
-See [RelayDog_Product_Design.md](RelayDog_Product_Design.md) for the product design, architecture, menus, settings pages, storage model, and security notes.
+</details>

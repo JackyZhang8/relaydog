@@ -27,13 +27,13 @@ final class MenuAndSettingsViewModelTests: XCTestCase {
         )
     }
 
-    func testBrandLogoAssetIsBundledWithGeneratedAppIconArtwork() throws {
+    func testBrandLogoAssetPreservesTransparentRoundedCorners() throws {
         let image = try XCTUnwrap(RelayDogBrandAssets.logoImage)
         XCTAssertEqual(image.size.width, 1024)
         XCTAssertEqual(image.size.height, 1024)
 
         let topLeftAlpha = try XCTUnwrap(RelayDogBrandAssets.cornerAlpha())
-        XCTAssertGreaterThanOrEqual(topLeftAlpha, 250)
+        XCTAssertLessThanOrEqual(topLeftAlpha, 5)
     }
 
     func testBundledBrandLogoUsesGeneratedOutputArtwork() throws {

@@ -1,3 +1,4 @@
 .relaycat/
 /.build/
 /certs/
+.DS_Store
