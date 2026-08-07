@@ -64,6 +64,30 @@ final class UpstreamDebugClientTests: XCTestCase {
         XCTAssertTrue(result.responseText.contains("hello"))
     }
 
+    func testTestPromptAllowsDisabledUpstream() async throws {
+        let transport = DebugRecordingHTTPTransport(response: .init(
+            statusCode: 200,
+            headers: ["content-type": "application/json"],
+            body: Data(#"{"choices":[{"message":{"content":"hello"}}]}"#.utf8)
+        ))
+        let client = UpstreamDebugClient(transport: transport)
+        var upstream = debugUpstream(
+            proto: .openAI,
+            baseURL: "https://example.com/openai/v1",
+            apiKey: "sk-test"
+        )
+        upstream.enabled = false
+
+        _ = try await client.sendTestPrompt(
+            upstream: upstream,
+            protocol: .openAI,
+            model: "glm-5.2",
+            prompt: "hi"
+        )
+
+        XCTAssertEqual(transport.requests.count, 1)
+    }
+
     private func debugUpstream(proto: ProxyProtocol, baseURL: String, apiKey: String) -> UpstreamConfig {
         UpstreamConfig(
             id: "debug",

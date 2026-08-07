@@ -23,7 +23,7 @@ public struct UpstreamDebugClient: Sendable {
         model: String,
         prompt: String
     ) async throws -> UpstreamDebugResult {
-        guard upstream.enabled, let capability = upstream.protocols[proto], capability.enabled else {
+        guard let capability = upstream.protocols[proto], capability.enabled else {
             throw ModelManagerError.protocolUnavailable(upstream.id, proto)
         }
 
