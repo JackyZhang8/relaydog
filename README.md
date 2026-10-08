@@ -19,7 +19,7 @@ RelayDog 是一款常驻 macOS 菜单栏的本地 AI 请求中转工具。它为
 ## 软件截图
 
 <div align="center">
-  <img src="screenshot/app.png" alt="RelayDog 设置界面" width="900" />
+  <img src="screenshot/app-0.1.4.png" alt="RelayDog 设置界面" width="900" />
 </div>
 
 ## 核心能力

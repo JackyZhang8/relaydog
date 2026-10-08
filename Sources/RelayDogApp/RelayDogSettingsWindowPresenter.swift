@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-private let defaultSettingsContentSize = NSSize(width: 900, height: 660)
+private let defaultSettingsContentSize = NSSize(width: 1060, height: 720)
 
 @MainActor
 public protocol RelayDogSettingsWindowing: AnyObject {

@@ -9,9 +9,26 @@ private let formHorizontalPadding: CGFloat = 12
 private let formVerticalPadding: CGFloat = 10
 
 enum RelayDogTheme {
-    static let brandStart = Color(red: 0.32, green: 0.42, blue: 0.98)
-    static let brandEnd = Color(red: 0.22, green: 0.66, blue: 0.96)
+    static let brandStart = Color(red: 0.278, green: 0.424, blue: 0.878)
+    static let brandEnd = brandStart
     static let cardCornerRadius: CGFloat = 12
+    static let workspaceBackground = adaptiveColor(light: 0xF7F9FC, dark: 0x20242C)
+    static let sidebarBackground = adaptiveColor(light: 0xF0F3F9, dark: 0x262C37)
+    static let cardBackground = adaptiveColor(light: 0xFFFFFF, dark: 0x2B313C)
+    static let borderColor = adaptiveColor(light: 0xE6EAF0, dark: 0x3B4350)
+    static let secondaryText = adaptiveColor(light: 0x778498, dark: 0xA3ADBC)
+
+    private static func adaptiveColor(light: Int, dark: Int) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let value = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(
+                red: CGFloat((value >> 16) & 0xFF) / 255,
+                green: CGFloat((value >> 8) & 0xFF) / 255,
+                blue: CGFloat(value & 0xFF) / 255,
+                alpha: 1
+            )
+        })
+    }
 
     static var brandGradient: LinearGradient {
         LinearGradient(
@@ -21,32 +38,30 @@ enum RelayDogTheme {
         )
     }
 
-    static var windowBackdrop: some View {
-        LinearGradient(
-            colors: [brandStart.opacity(0.07), brandEnd.opacity(0.03), Color.clear],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
-
     static var cardShadowColor: Color {
-        Color.black.opacity(0.07)
+        Color.black.opacity(0.025)
     }
 }
 
 enum RelayDogControlMetrics {
-    static let topTabHorizontalPadding: CGFloat = 18
-    static let topTabVerticalPadding: CGFloat = 10
-    static let topTabMinHeight: CGFloat = 42
+    static let sidebarWidth: CGFloat = 188
+    static let sidebarItemHorizontalPadding: CGFloat = 13
+    static let sidebarItemVerticalPadding: CGFloat = 11
+    static let sidebarItemMinHeight: CGFloat = 42
+    static let pageHorizontalPadding: CGFloat = 28
+    static let pageVerticalPadding: CGFloat = 24
+    static let panelPadding: CGFloat = 20
+    static let panelSpacing: CGFloat = 20
+    static let routePickerWidth: CGFloat = 180
     static let actionButtonHorizontalPadding: CGFloat = 16
     static let actionButtonVerticalPadding: CGFloat = 8
     static let actionButtonMinHeight: CGFloat = 38
     static let iconButtonMinSize: CGFloat = 34
     static let iconButtonVerticalPadding: CGFloat = 4
     static let iconButtonHorizontalPadding: CGFloat = 8
-    static let headerLogoSize: CGFloat = 42
+    static let headerLogoSize: CGFloat = 36
     static let headerTopPadding: CGFloat = 22
-    static let headerBottomPadding: CGFloat = 10
+    static let headerBottomPadding: CGFloat = 22
     static let headerShowsTagline = true
     static let headerShowsLocalEndpoint = false
     static let headerShowsRequestLogToggle = false
@@ -270,8 +285,8 @@ private struct RelayDogActionButtonStyle: ButtonStyle {
                     .stroke(borderColor, lineWidth: 1)
             )
             .shadow(
-                color: prominence == .primary && isEnabled ? RelayDogTheme.brandStart.opacity(0.35) : .clear,
-                radius: 5,
+                color: prominence == .primary && isEnabled ? RelayDogTheme.brandStart.opacity(0.12) : .clear,
+                radius: 3,
                 x: 0,
                 y: 2
             )
@@ -316,46 +331,90 @@ public struct RelayDogSettingsView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            SettingsHeaderView(viewModel: viewModel, actions: actions)
-                .padding(.horizontal, 20)
-                .padding(.top, RelayDogControlMetrics.headerTopPadding)
-                .padding(.bottom, RelayDogControlMetrics.headerBottomPadding)
+        HStack(spacing: 0) {
+            SettingsSidebar(selection: $selection, language: viewModel.effectiveLanguage)
+                .frame(width: RelayDogControlMetrics.sidebarWidth)
 
-            Divider()
+            Rectangle()
+                .fill(RelayDogTheme.borderColor)
+                .frame(width: 1)
 
-            SettingsTabBar(selection: $selection, language: viewModel.effectiveLanguage)
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 2)
+            VStack(spacing: 0) {
+                SettingsHeaderView(tab: selection, viewModel: viewModel, actions: actions)
+                    .padding(.horizontal, RelayDogControlMetrics.pageHorizontalPadding)
+                    .padding(.top, RelayDogControlMetrics.headerTopPadding)
+                    .padding(.bottom, RelayDogControlMetrics.headerBottomPadding)
 
-            SettingsTabContent(tab: selection, viewModel: viewModel, actions: actions)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
+                Rectangle()
+                    .fill(RelayDogTheme.borderColor)
+                    .frame(height: 1)
+
+                SettingsTabContent(tab: selection, viewModel: viewModel, actions: actions)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 860, minHeight: 620)
-        .background(
-            Color(nsColor: .windowBackgroundColor)
-                .overlay(RelayDogTheme.windowBackdrop)
-        )
+        .background(RelayDogTheme.workspaceBackground)
+        .tint(RelayDogTheme.brandStart)
     }
 }
 
-private struct SettingsTabBar: View {
+private struct SettingsSidebar: View {
     @Binding var selection: RelayDogSettingsTab
     let language: RelayDogResolvedLanguage
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(RelayDogSettingsTab.allCases) { tab in
-                SettingsTabButton(
-                    tab: tab,
-                    language: language,
-                    isSelected: selection == tab,
-                    select: { selection = tab }
-                )
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                HeaderLogo()
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("RelayDog")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(t("本机 AI 模型中转站", "Local AI model relay", language: language))
+                        .font(.system(size: 9))
+                        .foregroundStyle(RelayDogTheme.secondaryText)
+                }
             }
+            .padding(.horizontal, 7)
+            .padding(.bottom, 28)
+
+            Text(t("工作空间", "WORKSPACE", language: language))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(RelayDogTheme.secondaryText)
+                .padding(.horizontal, 13)
+                .padding(.bottom, 10)
+
+            VStack(spacing: 5) {
+                ForEach(RelayDogSettingsTab.allCases) { tab in
+                    SettingsTabButton(
+                        tab: tab,
+                        language: language,
+                        isSelected: selection == tab,
+                        select: { selection = tab }
+                    )
+                }
+            }
+
+            Spacer(minLength: 24)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Circle().fill(Color(red: 0.24, green: 0.60, blue: 0.49))
+                        .frame(width: 6, height: 6)
+                    Text(t("数据留在本机", "Data stays local", language: language))
+                        .font(.caption)
+                }
+                Text(t("一个地址，连接多路模型。", "One endpoint. Multiple models.", language: language))
+                    .font(.system(size: 10))
+            }
+            .foregroundStyle(RelayDogTheme.secondaryText)
+            .padding(.horizontal, 8)
         }
+        .padding(.horizontal, 14)
+        .padding(.top, 24)
+        .padding(.bottom, 22)
+        .frame(maxHeight: .infinity)
+        .background(RelayDogTheme.sidebarBackground)
     }
 }
 
@@ -369,23 +428,28 @@ private struct SettingsTabButton: View {
 
     var body: some View {
         Button(action: select) {
-            Label(tab.localizedTitle(language: language), systemImage: tab.systemImage)
-                .font(.callout.weight(isSelected ? .semibold : .medium))
-                .labelStyle(.titleAndIcon)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, RelayDogControlMetrics.topTabHorizontalPadding)
-                .padding(.vertical, RelayDogControlMetrics.topTabVerticalPadding)
-                .frame(maxWidth: .infinity, minHeight: RelayDogControlMetrics.topTabMinHeight)
-                .background(background)
-                .shadow(
-                    color: isSelected ? RelayDogTheme.brandStart.opacity(0.3) : .clear,
-                    radius: 5,
-                    x: 0,
-                    y: 2
-                )
+            HStack(spacing: 11) {
+                Image(systemName: tab.systemImage)
+                    .font(.system(size: 15))
+                    .frame(width: 18)
+                Text(tab.localizedTitle(language: language))
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, RelayDogControlMetrics.sidebarItemHorizontalPadding)
+            .padding(.vertical, RelayDogControlMetrics.sidebarItemVerticalPadding)
+            .frame(maxWidth: .infinity, minHeight: RelayDogControlMetrics.sidebarItemMinHeight)
+            .background(background)
+            .shadow(
+                color: isSelected ? Color.black.opacity(0.04) : .clear,
+                radius: 4,
+                x: 0,
+                y: 2
+            )
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isSelected ? Color.white : Color(nsColor: .labelColor))
+        .foregroundStyle(isSelected ? RelayDogTheme.brandStart : RelayDogTheme.secondaryText)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .onHover { hovering in
             isHovering = hovering
         }
@@ -394,39 +458,27 @@ private struct SettingsTabButton: View {
 
     @ViewBuilder
     private var background: some View {
-        if isSelected {
-            Capsule()
-                .fill(RelayDogTheme.brandGradient)
-        } else if isHovering {
-            Capsule()
-                .fill(RelayDogTheme.brandStart.opacity(0.08))
-        } else {
-            Capsule()
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
-        }
+        RoundedRectangle(cornerRadius: 8)
+            .fill(isSelected ? RelayDogTheme.cardBackground : (isHovering ? RelayDogTheme.cardBackground.opacity(0.6) : .clear))
     }
 }
 
 private struct SettingsHeaderView: View {
+    let tab: RelayDogSettingsTab
     let viewModel: RelayDogSettingsViewModel
     let actions: RelayDogSettingsActions
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
-            HeaderLogo()
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("RelayDog")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(RelayDogTheme.brandGradient)
-                Text(viewModel.headerTagline)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(tab.localizedTitle(language: viewModel.effectiveLanguage))
+                    .font(.system(size: 22, weight: .semibold))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(RelayDogTheme.secondaryText)
+                    .lineLimit(2)
             }
-
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             HeaderToggle(
                 title: viewModel.text("监听", "Listener"),
@@ -434,6 +486,21 @@ private struct SettingsHeaderView: View {
                 isOn: viewModel.config.listener.enabled,
                 setIsOn: actions.setListenerEnabled
             )
+        }
+    }
+
+    private var subtitle: String {
+        switch tab {
+        case .overview:
+            return viewModel.headerTagline
+        case .connections:
+            return viewModel.text("集中管理上游服务、模型和协议配置。", "Manage upstreams, models and protocol settings.")
+        case .logs:
+            return viewModel.text("配置请求日志的记录方式和保留时间。", "Configure request logging and retention.")
+        case .system:
+            return viewModel.text("语言、监听地址与本机文件。", "Language, listener and local files.")
+        case .about:
+            return viewModel.text("认识你的本机 AI 模型中转站。", "About your local AI model relay.")
         }
     }
 }
@@ -448,8 +515,7 @@ private struct HeaderLogo: View {
                     width: RelayDogControlMetrics.headerLogoSize,
                     height: RelayDogControlMetrics.headerLogoSize
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 11))
-                .shadow(color: RelayDogTheme.brandStart.opacity(0.25), radius: 6, x: 0, y: 3)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
                 .accessibilityHidden(true)
         }
     }
@@ -462,7 +528,7 @@ private struct SettingsTabContent: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: RelayDogControlMetrics.panelSpacing) {
                 switch tab {
                 case .overview:
                     OverviewSettingsPage(viewModel: viewModel, actions: actions)
@@ -476,8 +542,9 @@ private struct SettingsTabContent: View {
                     AboutSettingsPage(viewModel: viewModel)
                 }
             }
-            .padding(.top, 12)
             .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(.horizontal, RelayDogControlMetrics.pageHorizontalPadding)
+            .padding(.vertical, RelayDogControlMetrics.pageVerticalPadding)
         }
     }
 }
@@ -487,7 +554,7 @@ private struct OverviewSettingsPage: View {
     let actions: RelayDogSettingsActions
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: RelayDogControlMetrics.panelSpacing) {
             SettingsPanel(viewModel.text("客户端地址", "Client URLs"), systemImage: "link") {
                 VStack(spacing: 0) {
                     ForEach(viewModel.endpointItems, id: \.title) { item in
@@ -528,7 +595,7 @@ private struct AboutSettingsPage: View {
     var body: some View {
         let details = viewModel.aboutDetails
 
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: RelayDogControlMetrics.panelSpacing) {
             aboutHero(details)
 
             SettingsPanel(viewModel.text("核心能力", "Highlights"), systemImage: "sparkles") {
@@ -582,7 +649,7 @@ private struct AboutSettingsPage: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(RelayDogControlMetrics.panelPadding)
         .relayDogCard()
     }
 }
@@ -761,7 +828,7 @@ private struct ConnectionsSettingsPage: View {
     @State private var isAddingUpstream = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: RelayDogControlMetrics.panelSpacing) {
             SettingsPanelWithAction(
                 viewModel.text("中转站", "Upstreams"),
                 systemImage: "server.rack"
@@ -835,7 +902,7 @@ private struct LogsSettingsPage: View {
     let actions: RelayDogSettingsActions
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: RelayDogControlMetrics.panelSpacing) {
             SettingsPanel(viewModel.text("请求日志", "Request Logs"), systemImage: "doc.text.magnifyingglass") {
                 VStack(spacing: 0) {
                     ToggleSettingRow(
@@ -890,7 +957,7 @@ private struct SystemSettingsPage: View {
     let actions: RelayDogSettingsActions
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: RelayDogControlMetrics.panelSpacing) {
             SettingsPanel(viewModel.text("语言", "Language"), systemImage: "globe") {
                 HStack(spacing: 12) {
                     FormPickerRow(
@@ -966,7 +1033,7 @@ private struct SettingsPanel<Content: View>: View {
 
             content
         }
-        .padding(14)
+        .padding(RelayDogControlMetrics.panelPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .relayDogCard()
     }
@@ -980,14 +1047,14 @@ private struct SettingsPanelHeader: View {
         HStack(spacing: 10) {
             Image(systemName: systemImage)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(RelayDogTheme.brandGradient)
-                .frame(width: 28, height: 28)
+                .foregroundStyle(RelayDogTheme.brandStart)
+                .frame(width: 30, height: 30)
                 .background(
                     RoundedRectangle(cornerRadius: 7)
                         .fill(RelayDogTheme.brandStart.opacity(0.12))
                 )
             Text(title)
-                .font(.headline.weight(.semibold))
+                .font(.system(size: 14, weight: .semibold))
         }
     }
 }
@@ -996,12 +1063,12 @@ private extension View {
     func relayDogCard() -> some View {
         background(
             RoundedRectangle(cornerRadius: RelayDogTheme.cardCornerRadius)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .shadow(color: RelayDogTheme.cardShadowColor, radius: 8, x: 0, y: 3)
+                .fill(RelayDogTheme.cardBackground)
+                .shadow(color: RelayDogTheme.cardShadowColor, radius: 3, x: 0, y: 1)
         )
         .overlay(
             RoundedRectangle(cornerRadius: RelayDogTheme.cardCornerRadius)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.3), lineWidth: 1)
+                .stroke(RelayDogTheme.borderColor, lineWidth: 1)
         )
     }
 }
@@ -1034,7 +1101,7 @@ private struct SettingsPanelWithAction<Content: View, Action: View>: View {
 
             content
         }
-        .padding(14)
+        .padding(RelayDogControlMetrics.panelPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .relayDogCard()
     }
@@ -1258,7 +1325,7 @@ private struct EditableRouteRow: View {
                     Text(upstream.name).tag(upstream.id)
                 }
             }
-            .relayDogMenuField(width: 240)
+            .relayDogMenuField(width: RelayDogControlMetrics.routePickerWidth)
         }
         .padding(.vertical, 10)
     }
@@ -1278,65 +1345,26 @@ private struct EditableUpstreamRow: View {
     @State private var isConfirmingDelete = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Toggle(
-                "",
-                isOn: Binding(
-                    get: { upstream.enabled },
-                    set: { setEnabled($0) }
-                )
-            )
-            .toggleStyle(.switch)
-            .labelsHidden()
-            .relayDogClickableCursor()
-            .frame(width: 46, alignment: .leading)
-            .help(upstream.enabled ? t("停用", "Disable", language: language) : t("启用", "Enable", language: language))
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(upstream.name)
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                upstreamIdentity
+                Spacer(minLength: 12)
+                protocolBadges
+                upstreamActions
             }
-
-            Spacer()
-
-            HStack(spacing: 6) {
-                ForEach(protocolTitles, id: \.self) { title in
-                    ProtocolBadge(title: title)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    upstreamIdentity
+                    Spacer(minLength: 8)
+                    protocolBadges
+                }
+                HStack {
+                    Spacer(minLength: 0)
+                    upstreamActions
                 }
             }
-
-            Text("w\(upstream.weight)")
-                .relayDogNumericValueFont()
-                .foregroundStyle(.secondary)
-                .frame(width: 48, alignment: .trailing)
-
-            Text("\(upstream.timeoutSeconds)s")
-                .relayDogNumericValueFont()
-                .foregroundStyle(.secondary)
-                .frame(width: 52, alignment: .trailing)
-
-            Button(action: test) {
-                Label(t("测试", "Test", language: language), systemImage: "play.circle")
-            }
-            .relayDogSecondaryButton()
-            .help("Test")
-
-            Button(action: edit) {
-                Image(systemName: "pencil")
-            }
-            .relayDogIconButton()
-            .help("Edit")
-
-            Button(role: .destructive) {
-                isConfirmingDelete = true
-            } label: {
-                Image(systemName: "trash")
-            }
-            .relayDogIconButton()
-            .help("Delete")
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 14)
         .confirmationDialog(
             t("删除中转站？", "Delete upstream?", language: language),
             isPresented: $isConfirmingDelete,
@@ -1349,6 +1377,65 @@ private struct EditableUpstreamRow: View {
         } message: {
             Text(t("删除后将移除此中转站配置。", "This removes the upstream configuration.", language: language))
         }
+    }
+
+    private var upstreamIdentity: some View {
+        HStack(spacing: 12) {
+            Toggle(
+                "",
+                isOn: Binding(get: { upstream.enabled }, set: { setEnabled($0) })
+            )
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .relayDogClickableCursor()
+            .frame(width: 42, alignment: .leading)
+            .help(upstream.enabled ? t("停用", "Disable", language: language) : t("启用", "Enable", language: language))
+            .accessibilityLabel(upstream.name)
+
+            Text(upstream.name)
+                .font(.callout.weight(.medium))
+                .lineLimit(1)
+                .help(upstream.name)
+                .frame(minWidth: 80, maxWidth: 180, alignment: .leading)
+        }
+    }
+
+    private var protocolBadges: some View {
+        HStack(spacing: 6) {
+            ForEach(protocolTitles, id: \.self) { title in
+                ProtocolBadge(title: title)
+            }
+        }
+        .fixedSize()
+    }
+
+    private var upstreamActions: some View {
+        HStack(spacing: 8) {
+            Text("w\(upstream.weight)")
+                .relayDogNumericValueFont(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 32, alignment: .trailing)
+            Text("\(upstream.timeoutSeconds)s")
+                .relayDogNumericValueFont(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 36, alignment: .trailing)
+            Button(action: test) {
+                Label(t("测试", "Test", language: language), systemImage: "play.circle")
+            }
+            .relayDogSecondaryButton()
+            .help(t("测试", "Test", language: language))
+            Button(action: edit) { Image(systemName: "pencil") }
+                .relayDogIconButton()
+                .help(t("编辑", "Edit", language: language))
+                .accessibilityLabel(t("编辑", "Edit", language: language))
+            Button(role: .destructive) {
+                isConfirmingDelete = true
+            } label: { Image(systemName: "trash") }
+            .relayDogIconButton()
+            .help(t("删除", "Delete", language: language))
+            .accessibilityLabel(t("删除", "Delete", language: language))
+        }
+        .fixedSize()
     }
 
     private var protocolTitles: [String] {
@@ -1439,7 +1526,7 @@ private struct UpstreamEditorSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: RelayDogControlMetrics.panelSpacing) {
             HStack(alignment: .center) {
                 Text(title)
                     .font(.title3.weight(.semibold))
@@ -1466,7 +1553,7 @@ private struct UpstreamEditorSheet: View {
             .controlSize(.large)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: RelayDogControlMetrics.panelSpacing) {
                     switch selectedTab {
                     case .basic:
                         UpstreamBasicEditor(
@@ -1820,7 +1907,7 @@ private struct DraftModelMappingsEditor: View {
     @State private var pendingDeleteClientModel: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: RelayDogControlMetrics.panelSpacing) {
             HStack {
                 Text(t("模型映射", "Model Mappings", language: language))
                     .font(.headline)
@@ -2167,7 +2254,7 @@ private struct UpstreamTestSheet: View {
                     }
                 }
             }
-            .padding(14)
+            .padding(RelayDogControlMetrics.panelPadding)
             .relayDogCard()
 
             if let errorText {
@@ -2444,7 +2531,7 @@ private struct DebugTextBox: View {
     let systemImage: String
     let accent: Color
     let text: String
-    private let terminalBackground = Color(red: 0.045, green: 0.052, blue: 0.064)
+    private var terminalBackground: Color { RelayDogTheme.workspaceBackground }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -2463,7 +2550,7 @@ private struct DebugTextBox: View {
             ScrollView {
                 Text(text.isEmpty ? "-" : text)
                     .relayDogTechnicalValueFont(.caption)
-                    .foregroundStyle(Color.white.opacity(0.92))
+                    .foregroundStyle(Color(nsColor: .labelColor))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(10)
@@ -2674,14 +2761,10 @@ private struct ProtocolBadge: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
-                Capsule()
-                    .fill(RelayDogTheme.brandStart.opacity(0.1))
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(RelayDogTheme.brandStart.opacity(0.08))
             )
-            .overlay(
-                Capsule()
-                    .stroke(RelayDogTheme.brandStart.opacity(0.3), lineWidth: 1)
-            )
-            .foregroundStyle(RelayDogTheme.brandGradient)
+            .foregroundStyle(RelayDogTheme.brandStart)
     }
 }
 

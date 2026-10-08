@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import SwiftUI
 import RelayDogCore
 @testable import RelayDogApp
 
@@ -239,9 +240,14 @@ final class MenuAndSettingsViewModelTests: XCTestCase {
     }
 
     func testSettingsControlMetricsUseRoomierButtonsAndPlainPickerChrome() {
-        XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.topTabHorizontalPadding, 18)
-        XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.topTabVerticalPadding, 10)
-        XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.topTabMinHeight, 42)
+        XCTAssertEqual(RelayDogControlMetrics.sidebarWidth, 188)
+        XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.sidebarItemHorizontalPadding, 13)
+        XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.sidebarItemVerticalPadding, 10)
+        XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.sidebarItemMinHeight, 42)
+        XCTAssertEqual(RelayDogControlMetrics.pageHorizontalPadding, 28)
+        XCTAssertEqual(RelayDogControlMetrics.panelPadding, 20)
+        XCTAssertEqual(RelayDogControlMetrics.panelSpacing, 20)
+        XCTAssertLessThanOrEqual(RelayDogControlMetrics.routePickerWidth, 180)
         XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.actionButtonHorizontalPadding, 16)
         XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.actionButtonVerticalPadding, 8)
         XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.actionButtonMinHeight, 38)
@@ -251,9 +257,9 @@ final class MenuAndSettingsViewModelTests: XCTestCase {
         XCTAssertTrue(RelayDogControlMetrics.copyButtonsShowCopiedFeedback)
         XCTAssertEqual(RelayDogControlMetrics.copyFeedbackMessage(language: .zh), "已复制")
         XCTAssertEqual(RelayDogControlMetrics.copyFeedbackMessage(language: .en), "Copied")
-        XCTAssertEqual(RelayDogControlMetrics.headerLogoSize, 42)
-        XCTAssertGreaterThan(RelayDogControlMetrics.headerTopPadding, RelayDogControlMetrics.headerBottomPadding)
-        XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.headerTopPadding - RelayDogControlMetrics.headerBottomPadding, 8)
+        XCTAssertEqual(RelayDogControlMetrics.headerLogoSize, 36)
+        XCTAssertEqual(RelayDogControlMetrics.headerTopPadding, RelayDogControlMetrics.headerBottomPadding)
+        XCTAssertGreaterThanOrEqual(RelayDogControlMetrics.headerTopPadding, 20)
         XCTAssertTrue(RelayDogControlMetrics.clickableButtonsUsePointingHandCursor)
         XCTAssertFalse(RelayDogControlMetrics.menuFieldUsesOuterBackground)
         XCTAssertTrue(RelayDogControlMetrics.menuFieldUsesBorderlessButtonStyle)
@@ -272,6 +278,33 @@ final class MenuAndSettingsViewModelTests: XCTestCase {
         XCTAssertFalse(RelayDogControlMetrics.upstreamEditorShowsUpstreamEnabledToggle)
         XCTAssertTrue(RelayDogControlMetrics.upstreamEditorCloseUsesIconOnly)
         XCTAssertTrue(RelayDogControlMetrics.deleteActionsRequireConfirmation)
+    }
+
+    @MainActor
+    func testNativeLightSettingsRenderAtDefaultAndMinimumSizes() async throws {
+        var config = menuConfig()
+        config.language = .zh
+        let viewModel = RelayDogSettingsViewModel(config: config, preferredLanguages: ["zh-Hans-CN"])
+        let sizes = [NSSize(width: 1060, height: 720), NSSize(width: 860, height: 620)]
+
+        for size in sizes {
+            let hostingView = NSHostingView(rootView: RelayDogSettingsView(viewModel: viewModel))
+            hostingView.appearance = NSAppearance(named: .aqua)
+            hostingView.frame = NSRect(origin: .zero, size: size)
+            hostingView.layoutSubtreeIfNeeded()
+            XCTAssertEqual(hostingView.frame.size, size)
+            XCTAssertLessThanOrEqual(hostingView.fittingSize.width, size.width)
+            let bitmap = try XCTUnwrap(hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds))
+            hostingView.cacheDisplay(in: hostingView.bounds, to: bitmap)
+            XCTAssertGreaterThan(bitmap.pixelsWide, 0)
+            XCTAssertGreaterThan(bitmap.pixelsHigh, 0)
+
+            if let directory = ProcessInfo.processInfo.environment["RELAYDOG_UI_SNAPSHOT_DIR"] {
+                let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                let filename = "relaydog-native-a-\(Int(size.width)).png"
+                try png.write(to: URL(fileURLWithPath: directory, isDirectory: true).appendingPathComponent(filename))
+            }
+        }
     }
 
     func testLanguagePreferenceResolvesSystemFromPreferredLanguages() {
